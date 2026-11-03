@@ -1,0 +1,138 @@
+{
+  "id": "harmony-555",
+  "model": "Harmony 555",
+  "identity": {
+    "arch": 9,
+    "skin": 48,
+    "flash": "0xFF:0x12",
+    "software_type": 0
+  },
+  "payload": "blob",
+  "backend": "harmony-555",
+  "status": "read-only",
+  "capabilities": {
+    "touchscreen": false,
+    "ir_learning": false,
+    "hard_keys": true
+  },
+  "infrared": {
+    "native_protocols": [],
+    "waveform": "carrier-period",
+    "notes": "Commands are lowered to Architecture 9 mark/space carrier pulse arrays."
+  },
+  "notes": "Harmony 555 (Skin 48, Protocol 9, codename Mocha Grande). Uses an AHCM binary image inside an EZHex container.",
+  "schema": "afterglow-remote/1",
+  "vocabulary": {
+    "device_types": {
+      "Amplifier": "Amplifier",
+      "AudioVideoSwitch": "A/V switch",
+      "CableBox": "Cable box",
+      "Cd": "CD player",
+      "Computer": "Computer",
+      "DvdCd": "DVD / CD player",
+      "GameConsole": "Games console",
+      "MediaCenterPC": "Media centre PC",
+      "Monitor": "Monitor",
+      "Receiver": "AV receiver",
+      "SetTopBox": "Set-top box",
+      "Television": "Television"
+    },
+    "activity_types": [
+      ["Watch TV", "VirtualTelevisionN"],
+      ["Watch a DVD", "VirtualDvd"],
+      ["Listen to Music", "VirtualMediaCenterMusic"],
+      ["Play a Game", "VirtualGameConsole"],
+      ["Custom / Other", "VirtualGeneric"]
+    ],
+    "hard_keys": [
+      "VolumeUp", "VolumeDown", "VolumeMute",
+      "ChannelUp", "ChannelDown", "PrevChannel",
+      "DirectionUp", "DirectionDown", "DirectionLeft", "DirectionRight", "Select",
+      "Menu", "Exit", "Info", "Guide",
+      "Play", "Pause", "Stop", "Record", "Rewind", "FastForward", "SkipBack", "SkipForward",
+      "0", "1", "2", "3", "4", "5", "6", "7", "8", "9",
+      "Red", "Green", "Yellow", "Blue",
+      "Sound", "Picture",
+      "PageUp", "PageDown"
+    ],
+    "hard_key_aliases": {
+      "UpArrow": "PageUp",
+      "DownArrow": "PageDown"
+    },
+    "hard_key_labels": {
+      "VolumeUp": "Volume +",
+      "VolumeDown": "Volume −",
+      "VolumeMute": "Mute",
+      "ChannelUp": "Channel +",
+      "ChannelDown": "Channel −",
+      "PrevChannel": "Previous Channel",
+      "DirectionUp": "Up",
+      "DirectionDown": "Down",
+      "DirectionLeft": "Left",
+      "DirectionRight": "Right",
+      "Select": "OK",
+      "Menu": "Menu",
+      "Exit": "Exit",
+      "Info": "Info",
+      "Guide": "Guide",
+      "Play": "Play",
+      "Pause": "Pause",
+      "Stop": "Stop",
+      "Record": "Record",
+      "Rewind": "Rewind",
+      "FastForward": "Fast Forward",
+      "SkipBack": "Skip Back",
+      "SkipForward": "Skip Forward",
+      "Red": "Red",
+      "Green": "Green",
+      "Yellow": "Yellow",
+      "Blue": "Blue",
+      "Sound": "Sound",
+      "Picture": "Picture",
+      "PageUp": "Page Up",
+      "PageDown": "Page Down"
+    },
+    "hard_key_layout": []
+  },
+  "properties": {},
+  "interface": {
+    "tabs": [
+      "devices",
+      "activities",
+      "settings",
+      "flash"
+    ],
+    "device_pages": [
+      "search",
+      "identity",
+      "commands",
+      "screen",
+      "inputs",
+      "timing"
+    ],
+    "activity_pages": [
+      "identity",
+      "roles",
+      "screen_buttons",
+      "hard_buttons",
+      "startup",
+      "power"
+    ],
+    "timing": [
+      "always_on",
+      "power_delay",
+      "press_interkey",
+      "input_delay"
+    ],
+    "settings": [
+      "output_file"
+    ],
+    "languages": [
+      ["English", "enu"]
+    ],
+    "screen_grid": {
+      "device": [2, 2],
+      "activity": [2, 2]
+    }
+  }
+}
