@@ -1,138 +1,125 @@
 {
+  "schema": "afterglow-remote/1",
   "id": "harmony-555",
   "model": "Harmony 555",
   "identity": {
     "arch": 9,
     "skin": 48,
-    "flash": "0xFF:0x12",
+    "flash": "0x00020000",
     "software_type": 0
   },
   "payload": "blob",
   "backend": "harmony-555",
-  "status": "read-only",
+  "status": "experimental",
   "capabilities": {
     "touchscreen": false,
-    "ir_learning": false,
-    "hard_keys": true
+    "lcd_soft_keys": true,
+    "hard_keys": true,
+    "color_keys": true,
+    "tripartite_modes": true
   },
   "infrared": {
     "native_protocols": [],
-    "waveform": "carrier-period",
-    "notes": "Commands are lowered to Architecture 9 mark/space carrier pulse arrays."
+    "waveform": "tokenized-timing",
+    "notes": "Architecture 9 stores commands as carrier descriptors and tokenized timing table streams in Section 04/05."
   },
-  "notes": "Harmony 555 (Skin 48, Protocol 9, codename Mocha Grande). Uses an AHCM binary image inside an EZHex container.",
-  "schema": "afterglow-remote/1",
-  "vocabulary": {
-    "device_types": {
-      "Amplifier": "Amplifier",
-      "AudioVideoSwitch": "A/V switch",
-      "CableBox": "Cable box",
-      "Cd": "CD player",
-      "Computer": "Computer",
-      "DvdCd": "DVD / CD player",
-      "GameConsole": "Games console",
-      "MediaCenterPC": "Media centre PC",
-      "Monitor": "Monitor",
-      "Receiver": "AV receiver",
-      "SetTopBox": "Set-top box",
-      "Television": "Television"
+  "interface": {
+    "tabs": ["devices", "activities", "settings", "flash"],
+    "screen_grid": {
+      "device": [2, 2],
+      "activity": [2, 2]
     },
-    "activity_types": [
-      ["Watch TV", "VirtualTelevisionN"],
-      ["Watch a DVD", "VirtualDvd"],
-      ["Listen to Music", "VirtualMediaCenterMusic"],
-      ["Play a Game", "VirtualGameConsole"],
-      ["Custom / Other", "VirtualGeneric"]
-    ],
+    "device_pages": ["identity", "commands", "screen", "timing"],
+    "activity_pages": ["identity", "roles", "screen_buttons", "hard_buttons", "startup", "power"],
+    "settings": ["output_file", "language"],
+    "timing": ["power_delay", "press_interkey", "input_delay"],
+    "languages": [["English", "enu"]]
+  },
+  "vocabulary": {
     "hard_keys": [
+      "Off", "Activities", "Help", "Device",
+      "Sound", "Picture",
+      "Guide", "Menu", "Info", "Exit",
+      "DirectionUp", "DirectionDown", "DirectionLeft", "DirectionRight", "Select",
       "VolumeUp", "VolumeDown", "VolumeMute",
       "ChannelUp", "ChannelDown", "PrevChannel",
-      "DirectionUp", "DirectionDown", "DirectionLeft", "DirectionRight", "Select",
-      "Menu", "Exit", "Info", "Guide",
       "Play", "Pause", "Stop", "Record", "Rewind", "FastForward", "SkipBack", "SkipForward",
-      "0", "1", "2", "3", "4", "5", "6", "7", "8", "9",
       "Red", "Green", "Yellow", "Blue",
-      "Sound", "Picture",
-      "PageUp", "PageDown"
+      "Number1", "Number2", "Number3",
+      "Number4", "Number5", "Number6",
+      "Number7", "Number8", "Number9",
+      "NumberPlus", "Number0", "NumberEnter"
     ],
-    "hard_key_aliases": {
-      "UpArrow": "PageUp",
-      "DownArrow": "PageDown"
-    },
     "hard_key_labels": {
-      "VolumeUp": "Volume +",
-      "VolumeDown": "Volume −",
-      "VolumeMute": "Mute",
-      "ChannelUp": "Channel +",
-      "ChannelDown": "Channel −",
-      "PrevChannel": "Previous Channel",
+      "Off": "All Off",
+      "Activities": "Activities",
+      "Device": "Device",
+      "Help": "Help",
+      "Sound": "Sound Mode",
+      "Picture": "Picture Mode",
       "DirectionUp": "Up",
       "DirectionDown": "Down",
       "DirectionLeft": "Left",
       "DirectionRight": "Right",
       "Select": "OK",
-      "Menu": "Menu",
-      "Exit": "Exit",
-      "Info": "Info",
-      "Guide": "Guide",
-      "Play": "Play",
-      "Pause": "Pause",
-      "Stop": "Stop",
-      "Record": "Record",
-      "Rewind": "Rewind",
-      "FastForward": "Fast Forward",
-      "SkipBack": "Skip Back",
-      "SkipForward": "Skip Forward",
-      "Red": "Red",
-      "Green": "Green",
-      "Yellow": "Yellow",
-      "Blue": "Blue",
-      "Sound": "Sound",
-      "Picture": "Picture",
-      "PageUp": "Page Up",
-      "PageDown": "Page Down"
+      "VolumeUp": "Vol +",
+      "VolumeDown": "Vol −",
+      "VolumeMute": "Mute",
+      "ChannelUp": "Ch +",
+      "ChannelDown": "Ch −",
+      "PrevChannel": "Previous",
+      "Red": "Teletext Red",
+      "Green": "Teletext Green",
+      "Yellow": "Teletext Yellow",
+      "Blue": "Teletext Blue",
+      "NumberPlus": "Clear / +",
+      "NumberEnter": "Enter"
     },
-    "hard_key_layout": []
-  },
-  "properties": {},
-  "interface": {
-    "tabs": [
-      "devices",
-      "activities",
-      "settings",
-      "flash"
-    ],
-    "device_pages": [
-      "search",
-      "identity",
-      "commands",
-      "screen",
-      "inputs",
-      "timing"
-    ],
-    "activity_pages": [
-      "identity",
-      "roles",
-      "screen_buttons",
-      "hard_buttons",
-      "startup",
-      "power"
-    ],
-    "timing": [
-      "always_on",
-      "power_delay",
-      "press_interkey",
-      "input_delay"
-    ],
-    "settings": [
-      "output_file"
-    ],
-    "languages": [
-      ["English", "enu"]
-    ],
-    "screen_grid": {
-      "device": [2, 2],
-      "activity": [2, 2]
-    }
+    "hard_key_layout": [
+      [0, 0, 1, 1, "Off", "Off"],
+      [0, 2, 1, 1, "Activities", "Activities"],
+      [0, 4, 1, 1, "Help", "Help"],
+      [1, 0, 1, 1, "Sound", "Sound"],
+      [1, 4, 1, 1, "Picture", "Picture"],
+      [2, 1, 1, 1, "Menu", "Menu"],
+      [2, 3, 1, 1, "Info", "Info"],
+      [3, 1, 1, 1, "Exit", "Exit"],
+      [3, 3, 1, 1, "Guide", "Guide"],
+      [4, 2, 1, 1, "DirectionUp", "Up"],
+      [5, 1, 1, 1, "DirectionLeft", "Left"],
+      [5, 2, 1, 1, "Select", "OK"],
+      [5, 3, 1, 1, "DirectionRight", "Right"],
+      [6, 2, 1, 1, "DirectionDown", "Down"],
+      [7, 0, 1, 1, "VolumeUp", "Vol +"],
+      [7, 2, 1, 1, "VolumeMute", "Mute"],
+      [7, 4, 1, 1, "ChannelUp", "Ch +"],
+      [8, 0, 1, 1, "VolumeDown", "Vol −"],
+      [8, 2, 1, 1, "PrevChannel", "Prev"],
+      [8, 4, 1, 1, "ChannelDown", "Ch −"],
+      [9, 0, 1, 1, "Red", "Red"],
+      [9, 1, 1, 1, "Green", "Green"],
+      [9, 3, 1, 1, "Yellow", "Yellow"],
+      [9, 4, 1, 1, "Blue", "Blue"],
+      [10, 0, 1, 1, "Rewind", "Rew"],
+      [10, 2, 1, 1, "Play", "Play"],
+      [10, 4, 1, 1, "FastForward", "FF"],
+      [11, 0, 1, 1, "SkipBack", "Skip -"],
+      [11, 2, 1, 1, "Pause", "Pause"],
+      [11, 4, 1, 1, "SkipForward", "Skip +"],
+      [12, 0, 1, 1, "Record", "Rec"],
+      [12, 4, 1, 1, "Stop", "Stop"],
+      [13, 1, 1, 1, "Number1", "1"],
+      [13, 2, 1, 1, "Number2", "2"],
+      [13, 3, 1, 1, "Number3", "3"],
+      [14, 1, 1, 1, "Number4", "4"],
+      [14, 2, 1, 1, "Number5", "5"],
+      [14, 3, 1, 1, "Number6", "6"],
+      [15, 1, 1, 1, "Number7", "7"],
+      [15, 2, 1, 1, "Number8", "8"],
+      [15, 3, 1, 1, "Number9", "9"],
+      [16, 1, 1, 1, "NumberPlus", "+"],
+      [16, 2, 1, 1, "Number0", "0"],
+      [16, 3, 1, 1, "NumberEnter", "E"]
+    ]
   }
 }
