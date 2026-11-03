@@ -1,4 +1,4 @@
-"""Activity triggers and context resolution for Harmony 555 (Architecture 9)."""
+"""Activity triggers, macro chains, and execution graphs for Harmony 555 (Architecture 9)."""
 
 from __future__ import annotations
 
@@ -25,45 +25,58 @@ def activity_triggers(payload: bytes) -> dict[int, int]:
     return triggers
 
 
-def screen_contexts(payload: bytes) -> list[dict]:
-    """Extract Section 06 screen keymap contexts and bound buttons."""
-    start = struct.unpack_from("<I", payload, 0x0C + 6 * 4)[0] - ahcm.BASE
-    count = struct.unpack_from("<H", payload, start)[0]
+def decompile_execution_chain(payload: bytes, obj_idx: int, depth: int = 5) -> list[dict]:
+    """Recursively decompile an execution object into atomic commands and delays."""
+    if depth <= 0:
+        return []
+    objs = command_index.objects(payload)
+    if not (0 <= obj_idx < len(objs)):
+        return []
 
-    contexts = []
-    for s in range(count):
-        pos = start + 3 + 3 * s
-        ptr = _u24(payload, pos) - ahcm.BASE
-        if not (0 <= ptr < len(payload) - 10):
-            continue
-        btn_count = payload[ptr + 9]
-        buttons = []
-        for b in range(btn_count):
-            off = ptr + 10 + b * 4
-            if off + 4 > len(payload):
-                break
-            key_code = payload[off]
-            operand, category = struct.unpack_from("<HB", payload, off + 1)
-            buttons.append({
-                "key_code": key_code,
-                "operand": operand,
-                "category": category,
+    actions = []
+    for operand, opcode in objs[obj_idx]["atoms"]:
+        if opcode == COMMAND:
+            actions.append({
+                "type": "command",
+                "device": operand >> 8,
+                "command_id": operand,
             })
-        contexts.append({
-            "slot": s,
-            "offset": ptr,
-            "button_count": len(buttons),
-            "buttons": buttons,
-        })
-    return contexts
+        elif opcode == OBJECT:
+            actions.extend(decompile_execution_chain(payload, operand, depth - 1))
+        elif opcode == 0x7C:  # Delay / timer wait
+            actions.append({
+                "type": "delay",
+                "duration_ms": operand,
+            })
+    return actions
+
+
+def activity_screen_dispatch(payload: bytes) -> dict[int, list[int]]:
+    """Parse Section 14 activity switch table to find root screens per activity."""
+    sec14_start = struct.unpack_from("<I", payload, 0x0C + 14 * 4)[0] - ahcm.BASE
+    cnt14 = payload[sec14_start]
+    activity_screens: dict[int, list[int]] = {}
+
+    for i in range(cnt14):
+        p = _u24(payload, sec14_start + 1 + 3 * i) - ahcm.BASE
+        step_count = payload[p]
+        screens = []
+        for s in range(step_count):
+            item_ptr = _u24(payload, p + 3 + s * 5) - ahcm.BASE
+            if 0 <= item_ptr < len(payload):
+                op, code = struct.unpack_from("<HH", payload, item_ptr + 1)
+                if code == 0x7E:  # Screen navigation
+                    screens.append(op)
+        activity_screens[i] = screens
+
+    return activity_screens
 
 
 def inspect(payload: bytes) -> dict:
-    """Return high-level activity triggers and screen context counts."""
+    """Return high-level activity triggers and screen contexts."""
     triggers = activity_triggers(payload)
-    ctxs = screen_contexts(payload)
     return {
         "activity_count": len(triggers),
         "activities": triggers,
-        "context_count": len(ctxs),
+        "screens": activity_screen_dispatch(payload),
     }
