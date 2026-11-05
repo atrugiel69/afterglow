@@ -201,3 +201,22 @@ def name_record(record_type: int, identifier: int, name: str) -> bytes:
     encoded = name.encode("ascii")
     length = 4 + len(encoded)  # 2 bytes record_type + 2 bytes identifier + raw ascii
     return bytes([0xA7]) + struct.pack("<HHH", length, record_type, identifier) + encoded
+
+
+def command_flat_index(device_records: list[list[int]], *, static_head: bytes) -> bytes:
+    """Build Section 04: static dictionary head followed by contiguous per-device subtables."""
+    out = bytearray(static_head)
+    for record_offsets in device_records:
+        out += command_subtable(record_offsets)
+    return bytes(out)
+
+
+def device_master_table(subtable_offsets: list[int]) -> bytes:
+    """Build Section 05: device count byte followed by 3-byte pointers into Section 04 subtables."""
+    if len(subtable_offsets) > 0xFF:
+        raise ValueError("Section 05 supports at most 255 devices")
+    out = bytearray([len(subtable_offsets)])
+    for off in subtable_offsets:
+        target = ahcm.BASE + off
+        out += target.to_bytes(3, "little")
+    return bytes(out)

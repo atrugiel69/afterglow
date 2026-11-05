@@ -31,17 +31,51 @@ def place_objects(lay: Layout, object_atom_lists: list[list[tuple[int, int]]]) -
     return offsets
 
 
+def place_commands(lay: Layout, devices: list[dict]) -> list[list[int]]:
+    """Place command records and tokenized waveforms into heap memory."""
+    out = lay.out
+    device_records = []
+    for dev in devices:
+        placed = []
+        for cmd in dev.get("commands", []):
+            # If pre-compiled raw record and waveforms are provided
+            if "raw_record" in cmd:
+                rec_off = place(out, cmd["raw_record"])
+                placed.append(rec_off)
+            elif "record_offset" in cmd:
+                placed.append(cmd["record_offset"])
+        device_records.append(placed)
+    return device_records
+
+
 def write_tables(
     lay: Layout,
     *,
     sections: dict[int, bytes],
+    device_records: list[list[int]] | None = None,
 ) -> dict[int, int]:
     """Place master section tables (00..17) contiguously in ascending order and update AHCM header."""
     out = lay.out
     placed: dict[int, int] = {}
 
     for index in range(ahcm.SECTION_COUNT):
-        if index in sections:
+        if index == 4 and 4 not in sections and device_records is not None:
+            offset = len(out)
+            static_head = scaffold.section_04_static()
+            sec4_bytes = structures.command_flat_index(device_records, static_head=static_head)
+            out += sec4_bytes
+            placed[4] = offset
+        elif index == 5 and 5 not in sections and device_records is not None:
+            offset = len(out)
+            run = placed[4] + scaffold.SECTION_04_STATIC_SIZE
+            subtable_offsets = []
+            for cmds in device_records:
+                subtable_offsets.append(run)
+                run += len(structures.command_subtable(cmds))
+            sec5_bytes = structures.device_master_table(subtable_offsets)
+            out += sec5_bytes
+            placed[5] = offset
+        elif index in sections:
             offset = len(out)
             out += sections[index]
             placed[index] = offset
@@ -67,6 +101,7 @@ def image(
     *,
     screens: list[dict],
     objects: list[list[tuple[int, int]]],
+    device_records: list[list[int]] | None = None,
     sections: dict[int, bytes] | None = None,
 ) -> bytes:
     """Assemble screens with pointer relocation, execution objects, and master section tables."""
@@ -154,5 +189,5 @@ def image(
     all_sections[10] = structures.object_index(obj_offsets)
 
     # 5. Write master section tables and seal container
-    write_tables(lay, sections=all_sections)
+    write_tables(lay, sections=all_sections, device_records=device_records)
     return seal_image(lay)
