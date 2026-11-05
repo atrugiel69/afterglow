@@ -35,3 +35,7 @@ def section_04_static(payload: bytes | None = None) -> bytes:
     sec4_flash = int.from_bytes(raw[0x0C + 4 * 4 : 0x10 + 4 * 4], "little")
     sec4_rel = sec4_flash - 0x20000
     return raw[sec4_rel : sec4_rel + SECTION_04_STATIC_SIZE]
+
+def scaffold_payload_path() -> Path:
+    """Return the absolute path to the reference donor payload.bin."""
+    return Path(__file__).resolve().parent.parent.parent / "scaffolds" / "harmony-555" / "payload.bin"
