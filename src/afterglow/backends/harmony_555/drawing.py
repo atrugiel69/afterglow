@@ -34,6 +34,11 @@ GLYPHS: dict[int, str] = {
 
 CHARS: dict[str, int] = {v: k for k, v in GLYPHS.items() if v}
 
+# Address fields remapped when code blocks move across layouts
+ADDRESS_FIELDS = {
+    "text": ("target_ptr", "target"),
+}
+
 
 def decode_glyphs(raw: bytes) -> str:
     """Translate raw glyph codes to Unicode string."""
@@ -53,8 +58,10 @@ def disassemble(payload: bytes, offset: int) -> tuple[list[dict], int]:
 
     while cur < end:
         op = payload[cur]
+        inst_offset = BASE + cur
+
         if op == END:
-            instructions.append({"op": "end"})
+            instructions.append({"op": "end", "offset": inst_offset})
             cur += 1
             break
         elif op == BOX:
@@ -65,6 +72,7 @@ def disassemble(payload: bytes, offset: int) -> tuple[list[dict], int]:
             style = int.from_bytes(payload[cur + 9 : cur + 12], "little")
             instructions.append({
                 "op": "box",
+                "offset": inst_offset,
                 "line": line,
                 "type": box_type,
                 "x": x,
@@ -80,6 +88,7 @@ def disassemble(payload: bytes, offset: int) -> tuple[list[dict], int]:
             style = int.from_bytes(payload[cur + 7 : cur + 10], "little")
             instructions.append({
                 "op": "line",
+                "offset": inst_offset,
                 "line_type": line_type,
                 "geom": geom,
                 "style": style,
@@ -88,12 +97,13 @@ def disassemble(payload: bytes, offset: int) -> tuple[list[dict], int]:
         elif op in (ATTR, 0x11):
             instructions.append({
                 "op": "font",
+                "offset": inst_offset,
                 "opcode": op,
                 "font_id": payload[cur + 1],
             })
             cur += 2
         elif op == RETURN:
-            instructions.append({"op": "return"})
+            instructions.append({"op": "return", "offset": inst_offset})
             cur += 1
         elif op == TEXT:
             x, y = payload[cur + 1], payload[cur + 2]
@@ -106,6 +116,7 @@ def disassemble(payload: bytes, offset: int) -> tuple[list[dict], int]:
                 text_str = decode_glyphs(raw)
             instructions.append({
                 "op": "text",
+                "offset": inst_offset,
                 "x": x,
                 "y": y,
                 "target_ptr": target_ptr,
@@ -120,6 +131,7 @@ def disassemble(payload: bytes, offset: int) -> tuple[list[dict], int]:
                 text_str = decode_glyphs(raw)
                 instructions.append({
                     "op": "inline_text",
+                    "offset": inst_offset,
                     "x": x,
                     "y": y,
                     "glyphs": raw,
@@ -134,40 +146,60 @@ def disassemble(payload: bytes, offset: int) -> tuple[list[dict], int]:
     return instructions, cur - offset
 
 
+def encode_instruction(inst: dict) -> bytes:
+    """Encode a single drawing instruction to bytecode."""
+    op = inst.get("op") or inst.get("opcode")
+    if op == "end":
+        return bytes([END])
+    elif op == "box":
+        return bytes([BOX, inst["line"], inst["type"]]) + \
+               struct.pack("<HH", inst["x"], inst["y"]) + \
+               bytes([inst["w"], inst["h"]]) + \
+               inst["style"].to_bytes(3, "little")
+    elif op == "line":
+        return bytes([LINE, inst["line_type"]]) + inst["geom"] + inst["style"].to_bytes(3, "little")
+    elif op == "font":
+        return bytes([inst.get("opcode", ATTR), inst["font_id"]])
+    elif op == "return":
+        return bytes([RETURN])
+    elif op == "text":
+        tgt = inst.get("target_ptr", inst.get("target", 0))
+        return bytes([TEXT, inst["x"], inst["y"]]) + tgt.to_bytes(3, "little")
+    elif op == "inline_text":
+        glyphs = inst.get("glyphs") or encode_glyphs(inst.get("text", ""))
+        return bytes([INLINE_TEXT, inst["x"], inst["y"]]) + glyphs + b"\x00"
+    raise ValueError(f"Unknown instruction operation: {op}")
+
+
+def relocated(
+    instructions: list[dict],
+    mapping: dict[int, int],
+    strings: dict[str, int] | None = None,
+) -> list[dict]:
+    """Return instructions with target pointers remapped to new flash addresses."""
+    out = []
+    strings = strings or {}
+    for item in instructions:
+        moved = dict(item)
+        op = moved.get("op") or moved.get("opcode")
+        if op == "text":
+            tgt = moved.get("target_ptr", moved.get("target"))
+            # 1. Try relocation by old flash address
+            if tgt in mapping:
+                new_tgt = mapping[tgt]
+                moved["target_ptr"] = new_tgt
+                if "target" in moved:
+                    moved["target"] = new_tgt
+            # 2. Or fallback to relocation by string match if available
+            elif moved.get("text") and moved["text"] in strings:
+                new_tgt = strings[moved["text"]]
+                moved["target_ptr"] = new_tgt
+                if "target" in moved:
+                    moved["target"] = new_tgt
+        out.append(moved)
+    return out
+
+
 def assemble(instructions: list[dict]) -> bytes:
-    """Reciprocally compile a drawing AST back into bare-metal bytecode."""
-    buf = bytearray()
-    for inst in instructions:
-        op = inst["op"]
-        if op == "end":
-            buf.append(END)
-        elif op == "box":
-            buf.append(BOX)
-            buf.append(inst["line"])
-            buf.append(inst["type"])
-            buf.extend(struct.pack("<HH", inst["x"], inst["y"]))
-            buf.append(inst["w"])
-            buf.append(inst["h"])
-            buf.extend(inst["style"].to_bytes(3, "little"))
-        elif op == "line":
-            buf.append(LINE)
-            buf.append(inst["line_type"])
-            buf.extend(inst["geom"])
-            buf.extend(inst["style"].to_bytes(3, "little"))
-        elif op == "font":
-            buf.append(inst.get("opcode", ATTR))
-            buf.append(inst["font_id"])
-        elif op == "return":
-            buf.append(RETURN)
-        elif op == "text":
-            buf.append(TEXT)
-            buf.append(inst["x"])
-            buf.append(inst["y"])
-            buf.extend(inst["target_ptr"].to_bytes(3, "little"))
-        elif op == "inline_text":
-            buf.append(INLINE_TEXT)
-            buf.append(inst["x"])
-            buf.append(inst["y"])
-            buf.extend(inst.get("glyphs") or encode_glyphs(inst.get("text", "")))
-            buf.append(0x00)
-    return bytes(buf)
+    """Reciprocally compile an instruction list into bytecode."""
+    return b"".join(encode_instruction(inst) for inst in instructions)
