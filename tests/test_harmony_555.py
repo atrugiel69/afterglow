@@ -171,3 +171,63 @@ def test_build_project_roundtrip(payload, tmp_path):
     assert build_res.artifact.is_file()
     assert build_res.validation["ok"] is True
     assert build_res.artifact.read_bytes() == payload
+
+
+def test_keys_scan_mapping():
+    """Verify Harmony 555 physical key matrix mappings and helper integrity."""
+    from afterglow.backends.harmony_555 import keys
+
+    # 1. Total declared keys (44 physical keys including dedicated Teletext colors)
+    assert len(keys.SCANS) == 44
+    assert len(keys.COMMAND_KEYS) == 41
+    assert set(keys.FLOW) == {keys.ACTIVITIES, keys.OFF, keys.HELP}
+
+    # 2. Key anchors verified via RC6 / NEC signals
+    anchors = {
+        "Number1": 43,
+        "Number2": 2,
+        "Number3": 1,
+        "Number4": 3,
+        "Number5": 10,
+        "Number6": 9,
+        "Number7": 11,
+        "Number8": 18,
+        "Number9": 17,
+        "Number0": 26,
+        "Play": 4,
+        "Pause": 12,
+        "Stop": 7,
+        "Rewind": 13,
+        "FastForward": 14,
+        "DirectionUp": 45,
+        "DirectionDown": 49,
+        "DirectionLeft": 53,
+        "DirectionRight": 44,
+        "Select": 52,
+        "VolumeUp": 51,
+        "VolumeDown": 50,
+        "VolumeMute": 61,
+        "ChannelUp": 57,
+        "ChannelDown": 41,
+        "Red": 27,
+        "Green": 35,
+        "Yellow": 34,
+        "Blue": 33,
+    }
+    for name, expected_scan in anchors.items():
+        assert keys.SCANS[name] == expected_scan
+        assert keys.by_name(name) == 0x80 | expected_scan
+        assert keys.name_of(0x80 | expected_scan) == name
+
+    # 3. Bidirectional round-trip for all command keys
+    for name in keys.COMMAND_KEYS:
+        code_val = keys.by_name(name)
+        assert code_val is not None
+        assert keys.name_of(code_val) == name
+
+    # 4. Command ownership logic
+    assert keys.is_own_command("VolumeUp", "VolumeUp") is True
+    assert keys.is_own_command("Number1", "1") is True
+    assert keys.is_own_command("VolumeMute", "Mute") is True
+    assert keys.is_own_command("PrevChannel", "Prev") is True
+    assert keys.is_own_command("Play", "VolumeUp") is False
