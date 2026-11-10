@@ -45,23 +45,28 @@ def import_project(source, profile=None, context=None) -> ImportResult:
 
 def build_project(project: dict, profile=None, context=None) -> BuildResult:
     """Outbound compiler: synthesize an AHCM image from an Afterglow project."""
-    from . import ahcm, assemble, layout, scaffold
+    from . import ahcm, assemble, layout, scaffold, activities as act_mod
 
     if profile is not None and hasattr(profile, "require_buildable"):
         profile.require_buildable()
 
     settings = project.get("settings") or {}
-    scaffold_dir = context.find_scaffold(profile.id, context.root) if (context and profile) else None
-    
-    # Load base scaffold payload if present, or fall back to default
+    scaffold_dir = (
+        context.find_scaffold(profile.id, context.root)
+        if (context and profile)
+        else None
+    )
+
     if scaffold_dir and (Path(scaffold_dir) / "payload.bin").is_file():
         donor_payload = (Path(scaffold_dir) / "payload.bin").read_bytes()
     else:
         donor_payload = Path(scaffold.scaffold_payload_path()).read_bytes()
 
-    # Re-assembly pipeline
     BASE = ahcm.BASE
-    offsets = [int.from_bytes(donor_payload[0x0C + i * 4 : 0x10 + i * 4], "little") - BASE for i in range(18)]
+    offsets = [
+        int.from_bytes(donor_payload[0x0C + i * 4 : 0x10 + i * 4], "little") - BASE
+        for i in range(18)
+    ]
 
     # Dynamic extraction of sections
     sections = {}
@@ -70,7 +75,7 @@ def build_project(project: dict, profile=None, context=None) -> BuildResult:
         end = offsets[s + 1] if s + 1 < 18 else len(donor_payload) - 6
         sections[s] = donor_payload[start:end]
 
-    # Command offsets
+    # Command offsets from Section 05
     sec5_rel = offsets[5]
     dev_cnt = donor_payload[sec5_rel]
     device_cmd_offsets = []
@@ -84,7 +89,52 @@ def build_project(project: dict, profile=None, context=None) -> BuildResult:
         device_cmd_offsets.append(cmds)
 
     lay = layout.Layout()
-    lay.out = bytearray(donor_payload[:offsets[0]])
+    lay.out = bytearray(donor_payload[: offsets[0]])
+
+    # --------------------------------------------------------------------------
+    # Dynamic Activity Key Register Lowering & Section 09 Pointer Patching
+    # --------------------------------------------------------------------------
+    proj_activities = project.get("activities")
+    if proj_activities:
+        sec9_body = bytearray(sections[9])
+        mode_cnt = sec9_body[0]
+
+        dev_map = {
+            dev.get("label", f"Device {idx}"): idx
+            for idx, dev in enumerate(project.get("devices", []))
+        }
+
+        mode_ptrs = [
+            int.from_bytes(sec9_body[1 + 3 * m : 4 + 3 * m], "little") - BASE
+            for m in range(mode_cnt)
+        ]
+
+        act_by_id = {int(a["id"]): a for a in proj_activities if "id" in a}
+
+        for m in range(4, min(mode_cnt, 11)):
+            if m not in act_by_id:
+                continue
+
+            bindings = act_by_id[m].get("key_bindings", {})
+            new_reg = act_mod.lower_activity_key_register(
+                bindings,
+                device_name_to_idx=dev_map,
+            )
+
+            orig_ptr = mode_ptrs[m]
+            orig_len = 1 + 4 * donor_payload[orig_ptr]
+
+            if len(new_reg) == orig_len:
+                # In-place overwrite preserving bit parity
+                lay.out[orig_ptr : orig_ptr + len(new_reg)] = new_reg
+            else:
+                # Relocate to heap tail before Section 00
+                alloc_offset = len(lay.out)
+                lay.out.extend(new_reg)
+                flash_ptr = BASE + alloc_offset
+                sec9_body[1 + 3 * m : 4 + 3 * m] = flash_ptr.to_bytes(3, "little")
+
+        sections[9] = bytes(sec9_body)
 
     assemble.write_tables(
         lay,

@@ -51,32 +51,61 @@ def decompile_execution_chain(payload: bytes, obj_idx: int, depth: int = 5) -> l
     return actions
 
 
-def activity_screen_dispatch(payload: bytes) -> dict[int, list[int]]:
-    """Parse Section 14 activity switch table to find root screens per activity."""
+def activity_screen_dispatch(payload: bytes) -> dict[int, dict]:
+    """Parse Section 14 to correlate Activity IDs with their root screens."""
     sec14_start = struct.unpack_from("<I", payload, 0x0C + 14 * 4)[0] - ahcm.BASE
     cnt14 = payload[sec14_start]
-    activity_screens: dict[int, list[int]] = {}
 
+    entries = []
     for i in range(cnt14):
         p = _u24(payload, sec14_start + 1 + 3 * i) - ahcm.BASE
-        step_count = payload[p]
-        screens = []
+        step_count = payload[p + 1]
+        atoms = []
         for s in range(step_count):
-            item_ptr = _u24(payload, p + 3 + s * 5) - ahcm.BASE
-            if 0 <= item_ptr < len(payload):
-                op, code = struct.unpack_from("<HH", payload, item_ptr + 1)
-                if code == 0x7E:  # Screen navigation
-                    screens.append(op)
-        activity_screens[i] = screens
+            item_ptr = _u24(payload, p + 4 + s * 5) - ahcm.BASE
+            if 0 <= item_ptr + 3 <= len(payload):
+                op, code = struct.unpack_from("<HB", payload, item_ptr + 1)
+                atoms.append((code, op))
+        entries.append(atoms)
 
-    return activity_screens
+    dispatch = {}
+    if len(entries) > 9:
+        act_atoms = entries[6]
+        scr_atoms = entries[9]
+        for (a_code, a_op), (s_code, s_op) in zip(act_atoms, scr_atoms):
+            if a_code == 0x1F and s_code == 0x7E:
+                act_id = a_op & 0xFF
+                title = ui_index.parse_screen(payload, s_op).get("title", "")
+                dispatch[act_id] = {
+                    "activity_id": act_id,
+                    "root_screen": s_op,
+                    "title": title,
+                }
+    return dispatch
 
 
-def inspect(payload: bytes) -> dict:
-    """Return high-level activity triggers and screen contexts."""
-    triggers = activity_triggers(payload)
-    return {
-        "activity_count": len(triggers),
-        "activities": triggers,
-        "screens": activity_screen_dispatch(payload),
-    }
+def activity_key_bindings(payload: bytes, activity_id: int) -> list[dict]:
+    """Parse Section 9 to extract physical key bindings for a given Activity ID."""
+    sec9_start = struct.unpack_from("<I", payload, 0x0C + 9 * 4)[0] - ahcm.BASE
+    cnt = payload[sec9_start]
+    if not (0 <= activity_id < cnt):
+        return []
+
+    p = _u24(payload, sec9_start + 1 + activity_id * 3) - ahcm.BASE
+    if not (0 <= p < len(payload)):
+        return []
+
+    key_count = payload[p]
+    pos = p + 1
+    bindings = []
+    for _ in range(key_count):
+        if pos + 4 > len(payload):
+            break
+        kcode, op, code = struct.unpack_from("<BHB", payload, pos)
+        pos += 4
+        bindings.append({
+            "key_code": kcode,
+            "operand": op,
+            "category": code,
+        })
+    return bindings
