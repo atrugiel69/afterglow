@@ -136,6 +136,58 @@ def build_project(project: dict, profile=None, context=None) -> BuildResult:
 
         sections[9] = bytes(sec9_body)
 
+        # ----------------------------------------------------------------------
+        # Dynamic Soft Buttons & Screen 06 Lowering
+        # ----------------------------------------------------------------------
+        from . import screen_compiler
+        sec6_body = bytearray(sections[6])
+        sec6_changed = False
+
+        for m in range(4, min(mode_cnt, 11)):
+            if m not in act_by_id:
+                continue
+
+            act = act_by_id[m]
+            root_scr = act.get("root_screen")
+            if root_scr is None:
+                continue
+
+            donor_soft = act_mod.decompile_soft_buttons(donor_payload, root_scr)
+            curr_soft = act.get("soft_buttons")
+
+            if curr_soft is None:
+                continue
+
+            curr_labels = [
+                e if (e is None or isinstance(e, str))
+                else (e[0] if isinstance(e, (list, tuple)) else e.get("label"))
+                for e in curr_soft
+            ]
+
+            is_modified = (curr_labels != donor_soft) or any(
+                isinstance(e, dict) and any(k in e for k in ("operand", "object", "command", "category"))
+                for e in curr_soft
+            )
+
+            if not is_modified:
+                continue
+
+            title = act.get("label") or f"Activity {m}"
+            new_tr_flash = screen_compiler.compile_activity_screen(
+                lay,
+                donor_payload,
+                screen_idx=root_scr,
+                title=title,
+                soft_buttons=curr_soft,
+                device_name_to_idx=dev_map,
+            )
+
+            sec6_body[3 + 3 * root_scr : 6 + 3 * root_scr] = new_tr_flash.to_bytes(3, "little")
+            sec6_changed = True
+
+        if sec6_changed:
+            sections[6] = bytes(sec6_body)
+
     assemble.write_tables(
         lay,
         sections=sections,
