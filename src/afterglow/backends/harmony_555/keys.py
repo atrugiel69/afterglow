@@ -23,7 +23,7 @@ SCANS = {
     "Number8": 18,
     "Number9": 17,
     "Number0": 26,
-    "Clear": 19,
+    "NumberPlus": 19,
     "NumberEnter": 25,
 
     # Transport controls
@@ -61,9 +61,9 @@ SCANS = {
     "Yellow": 34,
     "Blue": 33,
 
-    # Screen paging & dedicated navigation
-    "UpArrow": 36,
-    "DownArrow": 37,
+    # Tripartite Mode switches (Sound / Picture)
+    "Picture": 36,  # 0xA4
+    "Sound": 37,    # 0xA5
 
     # Flow keys owned by the firmware
     "Activities": 30,
@@ -71,7 +71,24 @@ SCANS = {
     "Help": 32,
 }
 
+# Legacy / alias names accepted during lookup
+_ALIASES = {
+    "UpArrow": 36,
+    "DownArrow": 37,
+    "Clear": 19,
+}
+
+# Hardware bezel soft-button scan codes (flanking the 96x64 LCD in [2, 2] grid)
+SOFT_SCANS = {
+    "SoftTopLeft": 30,      # 0x9E
+    "SoftTopRight": 31,     # 0x9F
+    "SoftBottomLeft": 39,   # 0xA7
+    "SoftBottomRight": 38,  # 0xA6
+}
+_SOFT_NAMES = {scan: name for name, scan in SOFT_SCANS.items()}
+
 ACTIVITIES, OFF, HELP = SCANS["Activities"], SCANS["Off"], SCANS["Help"]
+PICTURE, SOUND = SCANS["Picture"], SCANS["Sound"]
 
 FLOW = (ACTIVITIES, OFF, HELP)
 COMMAND_KEYS = tuple(name for name, scan in SCANS.items() if scan not in FLOW)
@@ -103,14 +120,25 @@ def code(scan: int) -> int:
 def by_name(name: str) -> int | None:
     """The key code of a named key, or None if unrecognized."""
     scan = SCANS.get(name)
+    if scan is None:
+        scan = _ALIASES.get(name)
+    if scan is None:
+        scan = SOFT_SCANS.get(name)
     return None if scan is None else code(scan)
 
 
 def name_of(key_code: int) -> str | None:
-    """The name of the key bound by ``key_code``."""
+    """The name of the physical key bound by ``key_code``."""
     if not key_code & 0x80:
         return None
     return _NAMES.get(key_code & 0x7F)
+
+
+def soft_key_name(key_code: int) -> str | None:
+    """The name of the bezel soft key bound by ``key_code`` in a slot register."""
+    if not key_code & 0x80:
+        return None
+    return _SOFT_NAMES.get(key_code & 0x7F)
 
 
 _NAMES = {scan: name for name, scan in SCANS.items()}

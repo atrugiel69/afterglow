@@ -1,4 +1,4 @@
-"""Activity Decompilation, Soft-Button Pagination, and Key Binding Extraction for Harmony 555."""
+"""Activity Decompilation, Tripartite Modes, and Key Binding Extraction for Harmony 555."""
 
 from __future__ import annotations
 
@@ -10,6 +10,10 @@ BASE = ahcm.BASE
 OBJECT = 0x7F
 COMMAND = 0x7D
 ACTIVITY = 0x1F
+ENTER_SCREEN = 0x7E
+
+KEY_PICTURE = 0xA4  # Scan 36
+KEY_SOUND = 0xA5    # Scan 37
 
 
 def resolve_activity_catalog(payload: bytes) -> dict[int, dict]:
@@ -45,7 +49,7 @@ def resolve_activity_catalog(payload: bytes) -> dict[int, dict]:
         for s in range(c9):
             target = int.from_bytes(payload[p9 + 4 + s * 5 : p9 + 7 + s * 5], "little") - BASE
             op, code = struct.unpack_from("<HH", payload, target + 1)
-            if code == 0x7E:  # Screen navigation
+            if code == ENTER_SCREEN:
                 screens.append(op)
 
     out = {}
@@ -66,7 +70,7 @@ def resolve_activity_catalog(payload: bytes) -> dict[int, dict]:
 
 
 def decompile_soft_buttons(payload: bytes, screen_idx: int) -> list[str | None]:
-    """Decompile paginated [2, 2] soft keys for an activity screen from its visual grid."""
+    """Decompile paginated [2, 2] soft keys for a screen from its visual grid."""
     sc = ui_index.parse_screen(payload, screen_idx)
     buttons: list[str | None] = []
 
@@ -97,8 +101,104 @@ def decompile_soft_buttons(payload: bytes, screen_idx: int) -> list[str | None]:
     return buttons
 
 
+def key_bindings_to_hard_macros(
+    key_bindings: dict[str, dict],
+    device_title_to_id: dict[str, str],
+) -> dict[str, list]:
+    """Convert declarative key_bindings into GUI-compatible hard_macros steps."""
+    macros: dict[str, list] = {}
+    for kname, b in key_bindings.items():
+        if b.get("type") == "command":
+            dev_id = device_title_to_id.get(b.get("device", ""), str(b.get("device", "0")))
+            cmd_name = b.get("command", "")
+            if cmd_name:
+                macros[kname] = [["command", dev_id, cmd_name]]
+    return macros
+
+
+def decode_key_register_entries(
+    raw_entries: list[dict],
+    device_titles: dict[int, str],
+    get_commands_fn,
+    participating: set[int] | None = None,
+    skip_modal_nav: bool = False,
+) -> dict[str, dict]:
+    """Convert raw <BHB> register entries into declarative key_bindings dict."""
+    key_bindings: dict[str, dict] = {}
+    for b in raw_entries:
+        kcode = b["key_code"]
+        cat = b["category"]
+        op = b["operand"]
+
+        if skip_modal_nav and cat == ENTER_SCREEN and kcode in (KEY_PICTURE, KEY_SOUND):
+            continue
+
+        kname = keys.name_of(kcode) or f"0x{kcode:02X}"
+
+        if cat == ENTER_SCREEN:
+            key_bindings[kname] = {"type": "screen", "screen": op}
+        elif cat == COMMAND:
+            dev_idx = op >> 8
+            cmd_idx = op & 0xFF
+            if participating is not None:
+                participating.add(dev_idx)
+            key_bindings[kname] = {
+                "type": "command",
+                "device": device_titles.get(dev_idx, f"Device {dev_idx}"),
+                "command": f"Command_{cmd_idx}",
+            }
+        elif cat == OBJECT:
+            cmds = get_commands_fn(op)
+            if kcode >= 0x80 and cmds:
+                if participating is not None:
+                    for d, _ in cmds:
+                        participating.add(d)
+                dev_idx, cmd_idx = cmds[0]
+                key_bindings[kname] = {
+                    "type": "command",
+                    "device": device_titles.get(dev_idx, f"Device {dev_idx}"),
+                    "command": f"Command_{cmd_idx}",
+                    "object": op,
+                }
+            else:
+                if cmds and participating is not None:
+                    for d, _ in cmds:
+                        participating.add(d)
+                key_bindings[kname] = {"type": "macro", "object": op}
+        else:
+            key_bindings[kname] = {"type": f"cat_0x{cat:02X}", "operand": op}
+    return key_bindings
+
+
+def decompile_mode_screen(
+    payload: bytes,
+    screen_idx: int,
+    device_titles: dict[int, str],
+    get_commands_fn,
+    participating: set[int] | None = None,
+) -> dict:
+    """Decompile a Sound or Picture mode screen (physical overrides + soft buttons)."""
+    sc = ui_index.parse_screen(payload, screen_idx)
+    mode_keys = decode_key_register_entries(
+        sc.get("header_keys", []),
+        device_titles,
+        get_commands_fn,
+        participating=participating,
+        skip_modal_nav=True,
+    )
+    mode_soft = decompile_soft_buttons(payload, screen_idx)
+    title_to_id = {title: str(idx) for idx, title in device_titles.items()}
+    return {
+        "screen": screen_idx,
+        "title": sc.get("title") or "",
+        "key_bindings": mode_keys,
+        "hard_macros": key_bindings_to_hard_macros(mode_keys, title_to_id),
+        "soft_buttons": mode_soft,
+    }
+
+
 def project_activities(payload: bytes, device_titles: dict[int, str]) -> list[dict]:
-    """Decompile all user activities with participating devices, soft buttons, and physical key bindings."""
+    """Decompile all user activities with participating devices, soft buttons, and tripartite modes."""
     catalog = resolve_activity_catalog(payload)
     total_screens = ui_index.screen_count(payload)
     objs = command_index.objects(payload)
@@ -117,45 +217,51 @@ def project_activities(payload: bytes, device_titles: dict[int, str]) -> list[di
     activities = []
     for act_id, info in sorted(catalog.items()):
         root_scr = info["root_screen"]
+        sound_scr = None
+        picture_scr = None
+        participating: set[int] = set()
+
         if root_scr is not None:
             sc_root = ui_index.parse_screen(payload, root_scr)
             label = sc_root.get("title") or f"Activity {act_id}"
             soft_buttons = decompile_soft_buttons(payload, root_scr)
+            for hk in sc_root.get("header_keys", []):
+                if hk["category"] == ENTER_SCREEN:
+                    if hk["key_code"] == KEY_SOUND:
+                        sound_scr = hk["operand"]
+                    elif hk["key_code"] == KEY_PICTURE:
+                        picture_scr = hk["operand"]
         else:
             label = "All Off" if act_id == 10 else f"Activity {act_id}"
             soft_buttons = []
 
-        participating: set[int] = set()
-
         raw_bindings = activity_index.activity_key_bindings(payload, act_id)
-        key_bindings: dict[str, dict] = {}
-        for b in raw_bindings:
-            kcode = b["key_code"]
-            kname = keys.name_of(kcode) or f"0x{kcode:02X}"
-            cat = b["category"]
-            op = b["operand"]
+        key_bindings = decode_key_register_entries(
+            raw_bindings,
+            device_titles,
+            get_commands,
+            participating=participating,
+            skip_modal_nav=False,
+        )
 
-            if cat == 0x7E:
-                key_bindings[kname] = {"type": "screen", "screen": op}
-            elif cat == 0x7F:
-                cmds = get_commands(op)
-                if kcode >= 0x80 and cmds:
-                    for d, _ in cmds:
-                        participating.add(d)
-                    dev_idx, cmd_idx = cmds[0]
-                    key_bindings[kname] = {
-                        "type": "command",
-                        "device": device_titles.get(dev_idx, f"Device {dev_idx}"),
-                        "command": f"Command_{cmd_idx}",
-                        "object": op,
-                    }
-                else:
-                    if cmds:
-                        for d, _ in cmds:
-                            participating.add(d)
-                    key_bindings[kname] = {"type": "macro", "object": op}
-            else:
-                key_bindings[kname] = {"type": f"cat_0x{cat:02X}", "operand": op}
+        title_to_id = {title: str(idx) for idx, title in device_titles.items()}
+        std_hard_macros = key_bindings_to_hard_macros(key_bindings, title_to_id)
+        modes: dict[str, dict] = {
+            "standard": {
+                "screen": root_scr,
+                "key_bindings": dict(key_bindings),
+                "hard_macros": dict(std_hard_macros),
+                "soft_buttons": list(soft_buttons),
+            }
+        }
+        if sound_scr is not None:
+            modes["sound"] = decompile_mode_screen(
+                payload, sound_scr, device_titles, get_commands, participating=participating
+            )
+        if picture_scr is not None:
+            modes["picture"] = decompile_mode_screen(
+                payload, picture_scr, device_titles, get_commands, participating=participating
+            )
 
         if root_scr is not None:
             for s in range(total_screens):
@@ -184,9 +290,13 @@ def project_activities(payload: bytes, device_titles: dict[int, str]) -> list[di
             "label": label,
             "trigger_object": info["trigger_object"],
             "root_screen": root_scr,
+            "sound_screen": sound_scr,
+            "picture_screen": picture_scr,
             "devices": member_names,
             "key_bindings": key_bindings,
+            "hard_macros": std_hard_macros,
             "soft_buttons": soft_buttons,
+            "modes": modes,
         })
 
     return activities
@@ -196,9 +306,11 @@ def lower_activity_key_register(
     bindings_spec: dict | list,
     device_name_to_idx: dict[str, int] | None = None,
     command_lookup: dict[tuple[int, int], int] | None = None,
+    command_name_lookup: dict[tuple[int, str], int] | None = None,
+    preserved_entries: list[tuple[int, int, int]] | None = None,
 ) -> bytes:
-    """Compile an activity's key bindings into a raw Architecture 9 key register."""
-    entries: list[tuple[int, int, int]] = []
+    """Compile an activity's or mode's key bindings into a raw Architecture 9 key register."""
+    entries: list[tuple[int, int, int]] = list(preserved_entries or [])
 
     if isinstance(bindings_spec, list):
         for b in bindings_spec:
@@ -219,7 +331,7 @@ def lower_activity_key_register(
             btype = b.get("type")
             if btype == "screen":
                 op = b.get("screen", 0)
-                cat = 0x7E
+                cat = ENTER_SCREEN
             elif btype in ("macro", "command"):
                 op = b.get("object")
                 if op is None:
@@ -230,17 +342,22 @@ def lower_activity_key_register(
                         else int(dev or 0)
                     )
                     cmd = b.get("command", "")
-                    cmd_idx = (
-                        int(cmd.split("_")[-1])
-                        if isinstance(cmd, str) and "Command_" in cmd
-                        else int(cmd or 0)
-                    )
-                    op = (
-                        command_lookup.get((dev_idx, cmd_idx), 0)
-                        if command_lookup
-                        else ((dev_idx << 8) | cmd_idx)
-                    )
-                cat = 0x7F
+                    if command_name_lookup and isinstance(cmd, str) and (dev_idx, cmd) in command_name_lookup:
+                        cmd_idx = command_name_lookup[(dev_idx, cmd)]
+                    elif isinstance(cmd, str) and "Command_" in cmd:
+                        cmd_idx = int(cmd.split("_")[-1])
+                    elif isinstance(cmd, int) or (isinstance(cmd, str) and cmd.isdigit()):
+                        cmd_idx = int(cmd)
+                    else:
+                        cmd_idx = 0
+                    if command_lookup and (dev_idx, cmd_idx) in command_lookup:
+                        op = command_lookup[(dev_idx, cmd_idx)]
+                        cat = OBJECT
+                    else:
+                        op = (dev_idx << 8) | cmd_idx
+                        cat = COMMAND
+                else:
+                    cat = OBJECT
             elif btype and btype.startswith("cat_0x"):
                 cat = int(btype.split("cat_0x")[-1], 16)
                 op = b.get("operand", 0)

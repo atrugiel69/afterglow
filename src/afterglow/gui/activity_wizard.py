@@ -141,6 +141,7 @@ class ActivityWizard(StepWizard):
         spec["properties"] = p7.values()
         # after the properties: an activity's tabs are switched on by properties of it
         p4.apply(spec)
+        p5.apply_modes(spec)
         apply_plan(spec, self.power_page.get_plan(), self.power_page.leave())
         self._assets = p3.get_assets()
         return spec
@@ -350,6 +351,8 @@ class HardButtonMacroDialog(QDialog):
         btns.rejected.connect(self.reject)
         layout.addWidget(btns)
 class ActivityHardButtonsPage(QWizardPage):
+    _MODE_ORDER = (("standard", "Standard"), ("sound", "Sound"), ("picture", "Picture"))
+
     def __init__(self, devices, existing, parent=None, remote=None):
         super().__init__(parent)
         self.setTitle("Physical buttons")
@@ -358,9 +361,27 @@ class ActivityHardButtonsPage(QWizardPage):
                          "to the one that plays and changes channels. Give a key "
                          "something else to do only when that is wrong.")
         self.devices = devices
+        self._tripartite = bool(remote is not None and remote.can("tripartite_modes"))
+        self._active_mode = "standard"
+        existing_modes = (existing or {}).get("modes") or {}
+        self._mode_macros: dict[str, dict] = {
+            "standard": dict((existing or {}).get("hard_macros") or {}),
+            "sound": dict((existing_modes.get("sound") or {}).get("hard_macros") or {}),
+            "picture": dict((existing_modes.get("picture") or {}).get("hard_macros") or {}),
+        }
         layout = QVBoxLayout(self)
 
         top = QHBoxLayout()
+        self._mode_btns: dict[str, QPushButton] = {}
+        if self._tripartite:
+            top.addWidget(QLabel("<b>Mode:</b>"))
+            for mkey, mlabel in self._MODE_ORDER:
+                btn = QPushButton(mlabel)
+                btn.setCheckable(True)
+                btn.setChecked(mkey == "standard")
+                btn.clicked.connect(lambda _checked, k=mkey: self._switch_mode(k))
+                top.addWidget(btn)
+                self._mode_btns[mkey] = btn
         top.addStretch()
         self.view_choice = KeysViewChoice()
         top.addWidget(self.view_choice)
@@ -403,9 +424,10 @@ class ActivityHardButtonsPage(QWizardPage):
         # nineteen, so Guide, Info, the transport keys and the rest could not be given an
         # activity's own action at all (GitHub #5). A key an imported activity already
         # binds is kept even if the profile does not name it, so editing cannot drop it.
-        self.macros = existing.get("hard_macros", {})
+        self.macros = self._mode_macros["standard"]
         self.slots = list(vocabulary.hard_keys(remote))
-        self.slots += [key for key in self.macros if key not in self.slots]
+        for mdict in self._mode_macros.values():
+            self.slots += [key for key in mdict if key not in self.slots]
         # As they sit on the remote, top to bottom, when it has been drawn.
         drawn = self.keys_view.keys()
         self.slots.sort(key=lambda k: drawn.index(k) if k in drawn else len(drawn))
@@ -518,8 +540,35 @@ class ActivityHardButtonsPage(QWizardPage):
                 self.table.setItem(r, 1, QTableWidgetItem(DEFAULT_KEY))
         self.refresh_picture()
 
+    def _switch_mode(self, mode_key: str) -> None:
+        if mode_key == self._active_mode:
+            for k, btn in self._mode_btns.items():
+                btn.setChecked(k == self._active_mode)
+            return
+        self._mode_macros[self._active_mode] = self.macros
+        self._active_mode = mode_key
+        self.macros = self._mode_macros.setdefault(mode_key, {})
+        for k, btn in self._mode_btns.items():
+            btn.setChecked(k == mode_key)
+        for r, slot in enumerate(self.slots):
+            macro = self.macros.get(slot, [])
+            self.table.setItem(r, 1, QTableWidgetItem(_does(macro, self.devices)))
+        self.refresh_picture()
+
     def get_hard_macros(self):
-        return self.macros
+        self._mode_macros[self._active_mode] = self.macros
+        return self._mode_macros["standard"]
+
+    def apply_modes(self, spec: dict) -> None:
+        if not self._tripartite:
+            return
+        self._mode_macros[self._active_mode] = self.macros
+        modes = dict(spec.get("modes") or {})
+        for mkey in ("standard", "sound", "picture"):
+            existing_m = dict(modes.get(mkey) or {})
+            existing_m["hard_macros"] = dict(self._mode_macros.get(mkey) or {})
+            modes[mkey] = existing_m
+        spec["modes"] = modes
 class ActivityMacrosPage(QWizardPage):
     def __init__(self, devices, existing, parent=None):
         super().__init__(parent)
@@ -692,6 +741,7 @@ class ActivityEditor(SectionDialog):
         spec["properties"] = p6.values()
         # after the properties: an activity's tabs are switched on by properties of it
         screen.apply(spec)
+        p4.apply_modes(spec)
         apply_plan(spec, self.power.get_plan(), self.power.leave())
         self._assets = p3.get_assets()
         return spec

@@ -503,15 +503,39 @@ class ScreenButtonsPage(QWizardPage):
     """The labelled buttons the activity puts on the touchscreen, in order - a gap is a
     place the remote leaves empty - with the page drawn as the remote shows it."""
 
+    _MODE_ORDER = (("standard", "Standard"), ("sound", "Sound"), ("picture", "Picture"))
+
     def __init__(self, devices, existing, parent=None, remote=None):
         super().__init__(parent)
         self.devices = devices
-        self._title = (existing or {}).get("label") or ""
+        self._existing = existing or {}
+        self._title = self._existing.get("label") or ""
+        self._tripartite = bool(remote is not None and remote.can("tripartite_modes"))
+        self._active_mode = "standard"
+        self._mode_buttons: dict[str, list] = {
+            "standard": list(self._existing.get("soft_buttons") or []),
+            "sound": list(((self._existing.get("modes") or {}).get("sound") or {}).get("soft_buttons") or []),
+            "picture": list(((self._existing.get("modes") or {}).get("picture") or {}).get("soft_buttons") or []),
+        }
         self.setTitle("Screen buttons")
         self.setSubTitle(
             "The buttons on this activity's page of the remote's screen. Each sends "
             "one command or runs a macro, and can carry one of the remote's own icons.")
         layout = QVBoxLayout(self)
+
+        self._mode_btns: dict[str, QPushButton] = {}
+        if self._tripartite:
+            mode_bar = QHBoxLayout()
+            mode_bar.addWidget(QLabel("<b>Mode:</b>"))
+            for mkey, mlabel in self._MODE_ORDER:
+                btn = QPushButton(mlabel)
+                btn.setCheckable(True)
+                btn.setChecked(mkey == "standard")
+                btn.clicked.connect(lambda _checked, k=mkey: self._switch_mode(k))
+                mode_bar.addWidget(btn)
+                self._mode_btns[mkey] = btn
+            mode_bar.addStretch()
+            layout.addLayout(mode_bar)
 
         self.table = _ButtonTable(["Icon", "Label", "Does"])
         body = QHBoxLayout()
@@ -543,9 +567,27 @@ class ScreenButtonsPage(QWizardPage):
         layout.addLayout(row)
         self.table.itemDoubleClicked.connect(lambda *_: self._edit())
 
-        for entry in existing.get("soft_buttons", []):
+        for entry in self._mode_buttons["standard"]:
             self._add_row(entry)
         self._show()
+
+    def _mode_title(self, mode_key: str) -> str:
+        base = self._title
+        if mode_key == "standard" or not base:
+            return base
+        return f"{base} ({mode_key.capitalize()})"
+
+    def _switch_mode(self, mode_key: str) -> None:
+        if mode_key == self._active_mode:
+            for k, btn in self._mode_btns.items():
+                btn.setChecked(k == self._active_mode)
+            return
+        self._mode_buttons[self._active_mode] = self.get_buttons()
+        self._active_mode = mode_key
+        for k, btn in self._mode_btns.items():
+            btn.setChecked(k == mode_key)
+        self.preview.setTitle(self._mode_title(mode_key))
+        self._set_rows(self._mode_buttons.get(mode_key, []))
 
     def _show(self):
         """Draw the page as the list has it now."""
@@ -571,7 +613,9 @@ class ScreenButtonsPage(QWizardPage):
             self.table.setItem(row, 1, item)
             self.table.setItem(row, 2, QTableWidgetItem(""))
             return
-        if isinstance(entry, (list, tuple)):        # (label, device, command[, icon])
+        if isinstance(entry, str):
+            entry = {"label": entry, "device": None, "command": None}
+        elif isinstance(entry, (list, tuple)):      # (label, device, command[, icon])
             entry = {"label": entry[0], "device": entry[1], "command": entry[2],
                      **({"icon": entry[3]} if len(entry) > 3 else {})}
         row = self.table.rowCount()
@@ -648,7 +692,21 @@ class ScreenButtonsPage(QWizardPage):
 
     def apply(self, spec: dict) -> None:
         """Write the buttons into `spec`."""
-        spec["soft_buttons"] = self.get_buttons()
+        self._mode_buttons[self._active_mode] = self.get_buttons()
+        spec["soft_buttons"] = list(self._mode_buttons["standard"])
+        if self._tripartite:
+            modes = dict(spec.get("modes") or {})
+            for mkey in ("standard", "sound", "picture"):
+                existing_m = dict(modes.get(mkey) or {})
+                existing_m["soft_buttons"] = list(self._mode_buttons[mkey])
+                if mkey == "standard" and spec.get("root_screen") is not None:
+                    existing_m.setdefault("screen", spec["root_screen"])
+                elif mkey == "sound" and spec.get("sound_screen") is not None:
+                    existing_m.setdefault("screen", spec["sound_screen"])
+                elif mkey == "picture" and spec.get("picture_screen") is not None:
+                    existing_m.setdefault("screen", spec["picture_screen"])
+                modes[mkey] = existing_m
+            spec["modes"] = modes
 
     def get_buttons(self):
         """The buttons in order, None for a gap; gaps after the last button go."""
