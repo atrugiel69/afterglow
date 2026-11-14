@@ -367,16 +367,30 @@ def build_project(project: dict, profile=None, context=None) -> BuildResult:
                     cmd_idx_to_name=cmd_idx_to_name,
                     objs=objs,
                 )
-                curr_on = (
-                    _norm_devs(act["power_on_devices"])
-                    if act.get("power_on_devices") is not None
-                    else donor_startup["power_on_devices"]
-                )
-                curr_off = (
-                    _norm_devs(act["power_off_devices"])
-                    if act.get("power_off_devices") is not None
-                    else donor_startup["power_off_devices"]
-                )
+                if act.get("power_on_devices") is not None:
+                    curr_on = _norm_devs(act["power_on_devices"])
+                elif any(act.get(k) for k in ("display", "volume", "control", "roles")):
+                    role_ids = [act.get("display"), act.get("volume"), act.get("control")]
+                    role_ids += list((act.get("roles") or {}).values())
+                    curr_on = _norm_devs(list(dict.fromkeys(r for r in role_ids if r is not None)))
+                else:
+                    curr_on = donor_startup["power_on_devices"]
+
+                if act.get("power_off_devices") is not None:
+                    curr_off = _norm_devs(act["power_off_devices"])
+                elif act.get("power_on_devices") is None and any(
+                    act.get(k) for k in ("display", "volume", "control", "roles")
+                ):
+                    leave_set = set(_norm_devs(act.get("power_leave_devices") or []))
+                    on_set = set(curr_on)
+                    curr_off = [
+                        str(dev.get("id", idx))
+                        for idx, dev in enumerate(project.get("devices", []))
+                        if str(dev.get("id", idx)) not in on_set
+                        and str(dev.get("id", idx)) not in leave_set
+                    ]
+                else:
+                    curr_off = donor_startup["power_off_devices"]
                 curr_enter = (
                     list(act["enter"])
                     if act.get("enter") is not None

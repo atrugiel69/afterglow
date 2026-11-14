@@ -362,3 +362,88 @@ def test_activity_leave_sequence_roundtrip(donor_bytes, tmp_path):
     assert kodi_re["leave"][0][2] == reimp.project["devices"][0]["commands"][1][0]
     assert kodi_re["leave"][1] == ["delay", "0", 500]
     assert kodi_re["leave"][2] == ["command", "2", cmd_dev2]
+
+
+def test_gui_activity_startup_leave_and_power_roundtrip(donor_bytes, qapp_or_skip, tmp_path):
+    """Open a Harmony 555 activity in ActivityEditor, edit startup/leave macros & power order, and rebuild."""
+    from afterglow import remotes
+    from afterglow.gui.activity_power import ActivityPowerPage, LEAVE
+    from afterglow.gui.activity_wizard import ActivityEditor, ActivityMacrosPage, ActivityRolesPage
+
+    profile = remotes.get("harmony-555")
+    assert "startup" in profile.activity_pages
+    assert "power" in profile.activity_pages
+
+    imp = backend.import_project(donor_bytes)
+    proj = imp.project
+    kodi = next(a for a in proj["activities"] if a["label"] == "Kodi")
+
+    editor = ActivityEditor(proj["devices"], existing=kodi, remote=profile)
+
+    roles_page = editor.findChild(ActivityRolesPage)
+    macros_page = editor.findChild(ActivityMacrosPage)
+    power_page = editor.findChild(ActivityPowerPage)
+    assert roles_page is not None and macros_page is not None and power_page is not None
+
+    # 1. Roles inferred on import should populate display/volume/control combos
+    assert roles_page.disp_combo.currentData() is not None
+    assert roles_page.ctrl_combo.currentData() is not None
+
+    # 2. Power page: reverse power-on order and mark the first off-device as "Leave as it is"
+    orig_on = list(kodi["power_on_devices"])
+    reversed_on = list(reversed(orig_on))
+    power_page._touched = True
+    power_page._fill(reversed_on)
+    if power_page.table.rowCount() > len(reversed_on):
+        last_row = power_page.table.rowCount() - 1
+        left_dev_id = power_page.table.item(last_row, 0).data(256)
+        combo = power_page.table.cellWidget(last_row, 1)
+        leave_idx = combo.findData(LEAVE)
+        assert leave_idx >= 0
+        combo.setCurrentIndex(leave_idx)
+    else:
+        left_dev_id = None
+
+    # 3. Startup & Leave macros page: append enter command+delay and set leave sequence
+    cmd_dev1 = proj["devices"][1]["commands"][2][0]
+    cmd_dev0 = proj["devices"][0]["commands"][1][0]
+    enter_steps = list(macros_page.enter_macro.get_macro()) + [
+        ["command", "1", cmd_dev1],
+        ["delay", "1", 600],
+    ]
+    macros_page.enter_macro.load(enter_steps)
+
+    leave_steps = [
+        ["command", "0", cmd_dev0],
+        ["delay", "0", 450],
+    ]
+    macros_page.leave_macro.load(leave_steps)
+
+    # 4. Collect edited activity spec from GUI and rebuild AHCM binary
+    edited_kodi = editor._collect()
+    assert edited_kodi["power_on_devices"] == reversed_on
+    if left_dev_id is not None:
+        assert left_dev_id not in edited_kodi["power_off_devices"]
+        assert edited_kodi.get("power_leave_devices") == [left_dev_id]
+
+    for i, act in enumerate(proj["activities"]):
+        if act["id"] == edited_kodi["id"]:
+            proj["activities"][i] = edited_kodi
+            break
+
+    proj.setdefault("settings", {})["out_file"] = str(tmp_path / "harmony555.bin")
+    res = backend.build_project(proj)
+    mod_bytes = Path(res.artifact).read_bytes()
+    assert backend.validate_payload(mod_bytes).get("ok") is True
+
+    # 5. Re-import rebuilt binary and verify GUI edits round-tripped cleanly
+    reimp = backend.import_project(mod_bytes)
+    kodi_re = next(a for a in reimp.project["activities"] if a["label"] == "Kodi")
+    assert kodi_re["power_on_devices"] == reversed_on
+    if left_dev_id is not None:
+        assert left_dev_id not in kodi_re["power_off_devices"]
+    assert kodi_re["enter"][-2:] == [["command", "1", cmd_dev1], ["delay", "1", 600]]
+    assert len(kodi_re["leave"]) == 2
+    assert kodi_re["leave"][0][0:2] == ["command", "0"]
+    assert kodi_re["leave"][0][2] == reimp.project["devices"][0]["commands"][1][0]
+    assert kodi_re["leave"][1] == ["delay", "0", 450]

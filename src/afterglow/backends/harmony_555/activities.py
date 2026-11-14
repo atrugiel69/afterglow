@@ -326,9 +326,41 @@ def project_activities(
 
         member_names = [device_titles.get(d, f"Device {d}") for d in sorted(participating)]
 
+        # Infer display / volume / control roles from key bindings & power-on list
+        display_id = None
+        volume_id = None
+        control_id = None
+        vol_dev = (key_bindings.get("VolumeUp") or key_bindings.get("VolumeDown") or {}).get("device")
+        if vol_dev and vol_dev in title_to_id:
+            volume_id = title_to_id[vol_dev]
+        ctrl_dev = (
+            (key_bindings.get("DirectionUp") or key_bindings.get("Play") or key_bindings.get("ChannelUp") or {}).get("device")
+        )
+        if ctrl_dev and ctrl_dev in title_to_id:
+            control_id = title_to_id[ctrl_dev]
+        for dev_str in power_on_devices:
+            if dev_str != control_id and dev_str != volume_id:
+                display_id = dev_str
+                break
+        if display_id is None and volume_id is not None and volume_id != control_id:
+            display_id = volume_id
+        if control_id is None and power_on_devices:
+            control_id = power_on_devices[-1]
+        if volume_id is None:
+            volume_id = display_id
+        assigned = {x for x in (display_id, volume_id, control_id) if x is not None}
+        extra_roles = {
+            f"PASSTHROUGH_{i + 1}": dev_str
+            for i, dev_str in enumerate(d for d in power_on_devices if d not in assigned)
+        }
+
         activities.append({
             "id": str(act_id),
             "label": label,
+            "display": display_id,
+            "volume": volume_id,
+            "control": control_id,
+            "roles": extra_roles,
             "trigger_object": info["trigger_object"],
             "root_screen": root_scr,
             "sound_screen": sound_scr,

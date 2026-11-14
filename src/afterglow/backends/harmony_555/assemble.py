@@ -174,6 +174,13 @@ def write_tables(
                 continue
             _reloc_u24_at(m_ptr_pos, (9,))
 
+    # Section 10 object pointers into Section 09
+    if 10 in placed and deltas.get(9, 0) != 0:
+        sec10_start = placed[10]
+        cnt10 = struct.unpack_from("<H", out, sec10_start)[0]
+        for i in range(cnt10):
+            _reloc_u24_at(sec10_start + 2 + 3 * i, (9,))
+
     # Section 15 pointers into Section 14
     if 15 in placed and 15 not in sections and deltas.get(14, 0) != 0:
         cnt15 = out[placed[15]]
