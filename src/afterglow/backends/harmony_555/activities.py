@@ -197,11 +197,18 @@ def decompile_mode_screen(
     }
 
 
-def project_activities(payload: bytes, device_titles: dict[int, str]) -> list[dict]:
-    """Decompile all user activities with participating devices, soft buttons, and tripartite modes."""
+def project_activities(
+    payload: bytes,
+    device_titles: dict[int, str],
+    cmd_idx_to_name: dict[tuple[int, int], str] | None = None,
+) -> list[dict]:
+    """Decompile all user activities with participating devices, macros, and tripartite modes."""
+    from . import object_compiler
+
     catalog = resolve_activity_catalog(payload)
     total_screens = ui_index.screen_count(payload)
     objs = command_index.objects(payload)
+    startup_by_root = object_compiler.find_activity_startup_objects(payload, objs=objs)
 
     def get_commands(obj_idx: int, depth: int = 3) -> list[tuple[int, int]]:
         if depth <= 0 or not (0 <= obj_idx < len(objs)):
@@ -234,6 +241,40 @@ def project_activities(payload: bytes, device_titles: dict[int, str]) -> list[di
         else:
             label = "All Off" if act_id == 10 else f"Activity {act_id}"
             soft_buttons = []
+
+        if root_scr is not None and root_scr in startup_by_root:
+            startup_info = object_compiler.decompile_startup_object(
+                payload,
+                startup_by_root[root_scr],
+                cmd_idx_to_name=cmd_idx_to_name,
+                objs=objs,
+            )
+            enter_steps = startup_info["enter"]
+            power_on_devices = startup_info["power_on_devices"]
+            power_off_devices = startup_info["power_off_devices"]
+        else:
+            enter_steps = []
+            power_on_devices = []
+            power_off_devices = []
+
+        default_dev = power_on_devices[0] if power_on_devices else "0"
+        leave_steps, trig_off_devices = object_compiler.decompile_activity_leave(
+            payload,
+            info["trigger_object"],
+            cmd_idx_to_name=cmd_idx_to_name,
+            default_dev=default_dev,
+            objs=objs,
+        )
+        if act_id == 10 and trig_off_devices and not power_off_devices:
+            power_off_devices = trig_off_devices
+
+        for dev_str in power_on_devices:
+            if dev_str.isdigit():
+                participating.add(int(dev_str))
+        for step in enter_steps + leave_steps:
+            if isinstance(step, (list, tuple)) and len(step) >= 3 and step[0] == "command":
+                if str(step[1]).isdigit():
+                    participating.add(int(step[1]))
 
         raw_bindings = activity_index.activity_key_bindings(payload, act_id)
         key_bindings = decode_key_register_entries(
@@ -293,6 +334,10 @@ def project_activities(payload: bytes, device_titles: dict[int, str]) -> list[di
             "sound_screen": sound_scr,
             "picture_screen": picture_scr,
             "devices": member_names,
+            "power_on_devices": power_on_devices,
+            "power_off_devices": power_off_devices,
+            "enter": enter_steps,
+            "leave": leave_steps,
             "key_bindings": key_bindings,
             "hard_macros": std_hard_macros,
             "soft_buttons": soft_buttons,

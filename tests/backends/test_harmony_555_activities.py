@@ -19,7 +19,7 @@ def test_activity_key_roundtrip_bit_parity(donor_bytes):
     assert hashlib.sha256(built_bytes).hexdigest() == hashlib.sha256(donor_bytes).hexdigest()
     assert built_bytes == donor_bytes
 
-def test_activity_key_inplace_mutation(donor_bytes):
+def test_activity_key_inplace_mutation(donor_bytes, tmp_path):
     """Mutate an existing key binding in-place and verify container validity."""
     imp = backend.import_project(donor_bytes)
     proj = imp.project
@@ -294,3 +294,71 @@ def test_gui_tripartite_editor_roundtrip(donor_bytes, qapp_or_skip, tmp_path):
     kodi_re = next(a for a in reimp.project["activities"] if a["label"] == "Kodi")
     assert kodi_re["modes"]["sound"]["soft_buttons"][0] == "Night Mode"
     assert kodi_re["modes"]["picture"]["key_bindings"]["Number9"]["command"] == cmd0
+
+
+def test_activity_startup_power_and_enter_roundtrip(donor_bytes, tmp_path):
+    """Mutate power lists and enter steps; verify Section 10 round-trip."""
+    from afterglow.backends.harmony_555 import command_index
+
+    imp = backend.import_project(donor_bytes)
+    proj = imp.project
+    kodi = next(a for a in proj["activities"] if a["label"] == "Kodi")
+
+    assert isinstance(kodi["power_on_devices"], list)
+    assert isinstance(kodi["power_off_devices"], list)
+    assert isinstance(kodi["enter"], list)
+    assert isinstance(kodi["leave"], list)
+
+    orig_objs = command_index.objects(donor_bytes)
+    assert len(orig_objs) == 1287
+
+    cmd_dev1 = proj["devices"][1]["commands"][2][0]
+    reversed_on = list(reversed(kodi["power_on_devices"]))
+    kodi["power_on_devices"] = reversed_on
+    kodi["enter"] = list(kodi["enter"]) + [
+        ["command", "1", cmd_dev1],
+        ["delay", "1", 750],
+    ]
+
+    proj.setdefault("settings", {})["out_file"] = str(tmp_path / "harmony555.bin")
+    res = backend.build_project(proj)
+    mod_bytes = Path(res.artifact).read_bytes()
+    assert backend.validate_payload(mod_bytes).get("ok") is True
+
+    # Donor object indices 0..1286 remain unshifted; new objects appended at 1287+
+    mod_objs = command_index.objects(mod_bytes)
+    assert len(mod_objs) == 1290
+    assert mod_objs[983]["atoms"] == orig_objs[983]["atoms"]
+
+    reimp = backend.import_project(mod_bytes)
+    kodi_re = next(a for a in reimp.project["activities"] if a["label"] == "Kodi")
+    assert kodi_re["power_on_devices"] == reversed_on
+    assert kodi_re["enter"][-2:] == [["command", "1", cmd_dev1], ["delay", "1", 750]]
+
+
+def test_activity_leave_sequence_roundtrip(donor_bytes, tmp_path):
+    """Add shutdown commands and delays to leave list and verify round-trip."""
+    imp = backend.import_project(donor_bytes)
+    proj = imp.project
+    kodi = next(a for a in proj["activities"] if a["label"] == "Kodi")
+    cmd_dev0 = proj["devices"][0]["commands"][1][0]
+    cmd_dev2 = proj["devices"][2]["commands"][3][0]
+
+    kodi["leave"] = [
+        ["command", "0", cmd_dev0],
+        ["delay", "0", 500],
+        ["command", "2", cmd_dev2],
+    ]
+
+    proj.setdefault("settings", {})["out_file"] = str(tmp_path / "harmony555.bin")
+    res = backend.build_project(proj)
+    mod_bytes = Path(res.artifact).read_bytes()
+    assert backend.validate_payload(mod_bytes).get("ok") is True
+
+    reimp = backend.import_project(mod_bytes)
+    kodi_re = next(a for a in reimp.project["activities"] if a["label"] == "Kodi")
+    assert len(kodi_re["leave"]) == 3
+    assert kodi_re["leave"][0][0:2] == ["command", "0"]
+    assert kodi_re["leave"][0][2] == reimp.project["devices"][0]["commands"][1][0]
+    assert kodi_re["leave"][1] == ["delay", "0", 500]
+    assert kodi_re["leave"][2] == ["command", "2", cmd_dev2]

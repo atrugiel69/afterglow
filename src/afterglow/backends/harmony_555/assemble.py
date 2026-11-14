@@ -88,6 +88,98 @@ def write_tables(
     for index, offset in placed.items():
         struct.pack_into("<I", out, 0x0C + 4 * index, ahcm.BASE + offset)
 
+    # Relocate 24-bit flash pointers inside Sections 00..17 when section offsets shift
+    donor_bytes = scaffold.scaffold_payload_path().read_bytes()
+    orig_offs = [
+        struct.unpack_from("<I", donor_bytes, 0x0C + i * 4)[0] - ahcm.BASE
+        for i in range(ahcm.SECTION_COUNT)
+    ]
+    orig_ends = [
+        orig_offs[i + 1] if i + 1 < ahcm.SECTION_COUNT else len(donor_bytes) - 6
+        for i in range(ahcm.SECTION_COUNT)
+    ]
+    deltas = {
+        i: placed[i] - orig_offs[i]
+        for i in range(ahcm.SECTION_COUNT)
+        if i in placed
+    }
+
+    def _reloc_u24_at(pos: int, allowed_sections: tuple[int, ...]) -> int:
+        val = out[pos] | (out[pos + 1] << 8) | (out[pos + 2] << 16)
+        rel = val - ahcm.BASE
+        for s_idx in allowed_sections:
+            if orig_offs[s_idx] <= rel < orig_ends[s_idx]:
+                d = deltas.get(s_idx, 0)
+                if d:
+                    val += d
+                    out[pos] = val & 0xFF
+                    out[pos + 1] = (val >> 8) & 0xFF
+                    out[pos + 2] = (val >> 16) & 0xFF
+                return val
+        return val
+
+    # Section 04 static header pointers (and Section 05 if copied verbatim)
+    if 4 in placed and deltas.get(4, 0) != 0:
+        for rel in range(178, min(250, scaffold.SECTION_04_STATIC_SIZE - 2), 3):
+            _reloc_u24_at(placed[4] + rel, (4,))
+        if 5 in placed and 5 not in sections and device_records is None:
+            dev_cnt = out[placed[5]]
+            for d in range(dev_cnt):
+                _reloc_u24_at(placed[5] + 1 + 3 * d, (4,))
+
+    # Section 06 screen index, un-recompiled trailers, slot records, and key-register pointers
+    if 6 in placed:
+        sec6_start = placed[6]
+        orig_sec6_start = orig_offs[6]
+        scr_cnt = struct.unpack_from("<H", out, sec6_start)[0]
+        orig_scr_cnt = struct.unpack_from("<H", donor_bytes, orig_sec6_start)[0]
+        for s in range(min(scr_cnt, orig_scr_cnt)):
+            tr_ptr_pos = sec6_start + 3 + 3 * s
+            orig_tr_ptr_pos = orig_sec6_start + 3 + 3 * s
+            # Skip screens whose trailer pointer was replaced by screen_compiler
+            if bytes(out[tr_ptr_pos : tr_ptr_pos + 3]) != donor_bytes[orig_tr_ptr_pos : orig_tr_ptr_pos + 3]:
+                continue
+            new_tr = _reloc_u24_at(tr_ptr_pos, (6,))
+            tr_off = new_tr - ahcm.BASE
+            if not (0 <= tr_off + 6 <= len(out)):
+                continue
+            _reloc_u24_at(tr_off + 1, (6, 8))
+            slot_cnt = struct.unpack_from("<H", out, tr_off + 4)[0]
+            for sl in range(slot_cnt):
+                sl_ptr_pos = tr_off + 6 + 3 * sl
+                if sl_ptr_pos + 3 > len(out):
+                    break
+                new_sl = _reloc_u24_at(sl_ptr_pos, (6,))
+                s_off = new_sl - ahcm.BASE
+                if 0 <= s_off + 6 <= len(out):
+                    _reloc_u24_at(s_off, (6, 8))
+                    _reloc_u24_at(s_off + 3, (6, 8))
+
+    # Section 07 screen pointers into Section 06
+    if 7 in placed and 7 not in sections and deltas.get(6, 0) != 0:
+        cnt7 = struct.unpack_from("<H", out, placed[7])[0]
+        for i in range(cnt7):
+            _reloc_u24_at(placed[7] + 2 + 3 * i, (6,))
+
+    # Section 09 mode pointers into Section 09 (skip modes freshly allocated in lay.out)
+    if 9 in placed and deltas.get(9, 0) != 0:
+        sec9_start = placed[9]
+        orig_sec9_start = orig_offs[9]
+        mode_cnt = out[sec9_start]
+        orig_mode_cnt = donor_bytes[orig_sec9_start]
+        for m in range(min(mode_cnt, orig_mode_cnt)):
+            m_ptr_pos = sec9_start + 1 + 3 * m
+            orig_m_ptr_pos = orig_sec9_start + 1 + 3 * m
+            if bytes(out[m_ptr_pos : m_ptr_pos + 3]) != donor_bytes[orig_m_ptr_pos : orig_m_ptr_pos + 3]:
+                continue
+            _reloc_u24_at(m_ptr_pos, (9,))
+
+    # Section 15 pointers into Section 14
+    if 15 in placed and 15 not in sections and deltas.get(14, 0) != 0:
+        cnt15 = out[placed[15]]
+        for i in range(cnt15):
+            _reloc_u24_at(placed[15] + 1 + 3 * i, (14,))
+
     return placed
 
 

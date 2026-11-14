@@ -19,8 +19,11 @@ def resolve_device_titles(payload: bytes) -> dict[int, str]:
     def get_commands(obj_idx: int, depth: int = 3) -> list[int]:
         if depth <= 0 or not (0 <= obj_idx < len(objs)):
             return []
+        atoms = objs[obj_idx]["atoms"]
+        if any(op in (0x1F, 0x90) for _, op in atoms):
+            return []
         cmds = []
-        for operand, opcode in objs[obj_idx]["atoms"]:
+        for operand, opcode in atoms:
             if opcode == COMMAND:
                 cmds.append(operand)
             elif opcode == OBJECT:
@@ -85,8 +88,11 @@ def project_devices(payload: bytes) -> list[dict]:
     def get_commands(obj_idx: int, depth: int = 3) -> list[int]:
         if depth <= 0 or not (0 <= obj_idx < len(objs)):
             return []
+        atoms = objs[obj_idx]["atoms"]
+        if any(op in (0x1F, 0x90) for _, op in atoms):
+            return []
         cmds = []
-        for operand, opcode in objs[obj_idx]["atoms"]:
+        for operand, opcode in atoms:
             if opcode == COMMAND:
                 cmds.append(operand)
             elif opcode == OBJECT:

@@ -139,7 +139,7 @@ def build_project(project: dict, profile=None, context=None) -> BuildResult:
 
     proj_activities = project.get("activities")
     if proj_activities:
-        from . import screen_compiler
+        from . import screen_compiler, object_compiler
 
         sec9_body = bytearray(sections[9])
         mode_cnt = sec9_body[0]
@@ -153,9 +153,9 @@ def build_project(project: dict, profile=None, context=None) -> BuildResult:
         for idx, dev in enumerate(project.get("devices", [])):
             for c_idx, c_entry in enumerate(dev.get("commands", [])):
                 if isinstance(c_entry, (list, tuple)) and c_entry:
-                    cmd_name_lookup[(idx, str(c_entry[0]))] = c_idx
+                    cmd_name_lookup.setdefault((idx, str(c_entry[0])), c_idx)
                 elif isinstance(c_entry, str):
-                    cmd_name_lookup[(idx, c_entry)] = c_idx
+                    cmd_name_lookup.setdefault((idx, c_entry), c_idx)
         dev_id_to_title = {
             str(dev.get("id", idx)): dev.get("label", f"Device {idx}")
             for idx, dev in enumerate(project.get("devices", []))
@@ -188,7 +188,7 @@ def build_project(project: dict, profile=None, context=None) -> BuildResult:
             new_reg = act_mod.lower_activity_key_register(
                 bindings,
                 device_name_to_idx=dev_map,
-                        command_name_lookup=cmd_name_lookup,
+                command_name_lookup=cmd_name_lookup,
             )
 
             orig_ptr = mode_ptrs[m]
@@ -253,7 +253,7 @@ def build_project(project: dict, profile=None, context=None) -> BuildResult:
                             title=title,
                             soft_buttons=curr_soft,
                             device_name_to_idx=dev_map,
-                    command_name_lookup=cmd_name_lookup,
+                            command_name_lookup=cmd_name_lookup,
                         )
                         sec6_body[3 + 3 * root_scr : 6 + 3 * root_scr] = new_tr_flash.to_bytes(3, "little")
                         sec6_changed = True
@@ -300,7 +300,7 @@ def build_project(project: dict, profile=None, context=None) -> BuildResult:
                     hk_bytes = act_mod.lower_activity_key_register(
                         curr_m_keys,
                         device_name_to_idx=dev_map,
-                    command_name_lookup=cmd_name_lookup,
+                        command_name_lookup=cmd_name_lookup,
                         preserved_entries=preserved_nav,
                     )
 
@@ -319,6 +319,129 @@ def build_project(project: dict, profile=None, context=None) -> BuildResult:
 
         if sec6_changed:
             sections[6] = bytes(sec6_body)
+
+        # 3. Activity Startup & Shutdown Sequences (Section 10 + Screen 2)
+        from . import devices as dev_mod
+        cmd_idx_to_name: dict[tuple[int, int], str] = {}
+        for idx, dev in enumerate(project.get("devices", [])):
+            for c_idx, c_entry in enumerate(dev.get("commands", [])):
+                c_name = str(c_entry[0]) if isinstance(c_entry, (list, tuple)) and c_entry else str(c_entry)
+                cmd_idx_to_name[(idx, c_idx)] = c_name
+        for d_entry in dev_mod.project_devices(donor_payload):
+            d_idx = int(d_entry["id"])
+            for c_idx, c_val in enumerate(d_entry.get("commands", [])):
+                c_name = str(c_val[0]) if isinstance(c_val, (list, tuple)) and c_val else str(c_val)
+                cmd_idx_to_name.setdefault((d_idx, c_idx), c_name)
+                cmd_name_lookup.setdefault((d_idx, c_name), c_idx)
+        obj_alloc = object_compiler.ObjectAllocator(lay, sections[10])
+        donor_startup_by_root = object_compiler.find_activity_startup_objects(
+            donor_payload, objs=objs
+        )
+        donor_catalog = act_mod.resolve_activity_catalog(donor_payload)
+
+        def _norm_devs(dev_list: list) -> list[str]:
+            out_devs: list[str] = []
+            for d in dev_list or ():
+                if isinstance(d, str) and d in dev_map:
+                    out_devs.append(str(dev_map[d]))
+                else:
+                    out_devs.append(str(d))
+            return out_devs
+
+        def _norm_atoms(steps: list) -> list[tuple[int, int]]:
+            return object_compiler.lower_macro_steps(
+                steps,
+                device_name_to_idx=dev_map,
+                command_name_lookup=cmd_name_lookup,
+            )
+
+        for act_id, act in sorted(act_by_id.items()):
+            root_scr = act.get("root_screen")
+            if root_scr is None and act_id in donor_catalog:
+                root_scr = donor_catalog[act_id].get("root_screen")
+
+            if root_scr is not None and root_scr in donor_startup_by_root:
+                donor_startup = object_compiler.decompile_startup_object(
+                    donor_payload,
+                    donor_startup_by_root[root_scr],
+                    cmd_idx_to_name=cmd_idx_to_name,
+                    objs=objs,
+                )
+                curr_on = (
+                    _norm_devs(act["power_on_devices"])
+                    if act.get("power_on_devices") is not None
+                    else donor_startup["power_on_devices"]
+                )
+                curr_off = (
+                    _norm_devs(act["power_off_devices"])
+                    if act.get("power_off_devices") is not None
+                    else donor_startup["power_off_devices"]
+                )
+                curr_enter = (
+                    list(act["enter"])
+                    if act.get("enter") is not None
+                    else donor_startup["enter"]
+                )
+
+                startup_changed = (
+                    curr_on != donor_startup["power_on_devices"]
+                    or curr_off != donor_startup["power_off_devices"]
+                    or _norm_atoms(curr_enter) != _norm_atoms(donor_startup["enter"])
+                )
+                if startup_changed:
+                    new_startup_idx = object_compiler.compile_activity_startup(
+                        obj_alloc,
+                        donor_startup,
+                        enter_steps=curr_enter,
+                        power_on_devices=curr_on,
+                        power_off_devices=curr_off,
+                        device_name_to_idx=dev_map,
+                        command_name_lookup=cmd_name_lookup,
+                    )
+                    object_compiler.patch_activities_menu_startup_obj(
+                        lay,
+                        donor_payload,
+                        donor_startup["startup_object"],
+                        new_startup_idx,
+                    )
+
+            trig_idx = act.get("trigger_object")
+            if trig_idx is None and act_id in donor_catalog:
+                trig_idx = donor_catalog[act_id].get("trigger_object")
+
+            if trig_idx is not None:
+                donor_leave, donor_trig_off = object_compiler.decompile_activity_leave(
+                    donor_payload,
+                    trig_idx,
+                    cmd_idx_to_name=cmd_idx_to_name,
+                    objs=objs,
+                )
+                curr_leave = (
+                    list(act["leave"])
+                    if act.get("leave") is not None
+                    else donor_leave
+                )
+                curr_trig_off = (
+                    _norm_devs(act["power_off_devices"])
+                    if (act_id == 10 and act.get("power_off_devices") is not None)
+                    else donor_trig_off
+                )
+                leave_changed = (
+                    _norm_atoms(curr_leave) != _norm_atoms(donor_leave)
+                    or (act_id == 10 and curr_trig_off != donor_trig_off)
+                )
+                if leave_changed:
+                    object_compiler.compile_activity_leave(
+                        obj_alloc,
+                        trig_idx,
+                        act_id,
+                        leave_steps=curr_leave,
+                        power_off_devices=(curr_trig_off if act_id == 10 else None),
+                        device_name_to_idx=dev_map,
+                        command_name_lookup=cmd_name_lookup,
+                    )
+
+        sections[10] = obj_alloc.to_bytes()
 
     assemble.write_tables(
         lay,
