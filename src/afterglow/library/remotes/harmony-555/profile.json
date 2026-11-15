@@ -5,7 +5,8 @@
   "identity": {
     "arch": 9,
     "skin": 48,
-    "flash": "0x00020000",
+    "flash": "0xFF:0x12",
+    "board": "3.1.0",
     "software_type": 0
   },
   "payload": "blob",
@@ -24,31 +25,99 @@
     "notes": "Architecture 9 stores commands as carrier descriptors and tokenized timing table streams in Section 04/05."
   },
   "interface": {
-    "tabs": ["devices", "activities", "settings", "flash"],
+    "tabs": [
+      "devices",
+      "activities",
+      "settings",
+      "flash"
+    ],
     "screen_grid": {
-      "device": [2, 2],
-      "activity": [2, 2]
+      "device": [
+        2,
+        2
+      ],
+      "activity": [
+        2,
+        2
+      ]
     },
-    "device_pages": ["identity", "commands", "screen", "timing"],
-    "activity_pages": ["identity", "roles", "screen_buttons", "hard_buttons", "startup", "power"],
-    "settings": ["output_file", "language"],
-    "timing": ["power_delay", "press_interkey", "input_delay"],
-    "languages": [["English", "enu"]]
+    "device_pages": [
+      "identity",
+      "commands",
+      "screen",
+      "timing"
+    ],
+    "activity_pages": [
+      "identity",
+      "roles",
+      "screen_buttons",
+      "hard_buttons",
+      "startup",
+      "power"
+    ],
+    "settings": [
+      "output_file",
+      "language"
+    ],
+    "timing": [
+      "power_delay",
+      "press_interkey",
+      "input_delay"
+    ],
+    "languages": [
+      [
+        "English",
+        "enu"
+      ]
+    ]
   },
   "vocabulary": {
     "hard_keys": [
-      "Off", "Activities", "Help", "Device",
-      "Sound", "Picture",
-      "Guide", "Menu", "Info", "Exit",
-      "DirectionUp", "DirectionDown", "DirectionLeft", "DirectionRight", "Select",
-      "VolumeUp", "VolumeDown", "VolumeMute",
-      "ChannelUp", "ChannelDown", "PrevChannel",
-      "Play", "Pause", "Stop", "Record", "Rewind", "FastForward", "SkipBack", "SkipForward",
-      "Red", "Green", "Yellow", "Blue",
-      "Number1", "Number2", "Number3",
-      "Number4", "Number5", "Number6",
-      "Number7", "Number8", "Number9",
-      "NumberPlus", "Number0", "NumberEnter"
+      "Off",
+      "Activities",
+      "Help",
+      "Device",
+      "Sound",
+      "Picture",
+      "Guide",
+      "Menu",
+      "Info",
+      "Exit",
+      "DirectionUp",
+      "DirectionDown",
+      "DirectionLeft",
+      "DirectionRight",
+      "Select",
+      "VolumeUp",
+      "VolumeDown",
+      "VolumeMute",
+      "ChannelUp",
+      "ChannelDown",
+      "PrevChannel",
+      "Play",
+      "Pause",
+      "Stop",
+      "Record",
+      "Rewind",
+      "FastForward",
+      "SkipBack",
+      "SkipForward",
+      "Red",
+      "Green",
+      "Yellow",
+      "Blue",
+      "Number1",
+      "Number2",
+      "Number3",
+      "Number4",
+      "Number5",
+      "Number6",
+      "Number7",
+      "Number8",
+      "Number9",
+      "NumberPlus",
+      "Number0",
+      "NumberEnter"
     ],
     "hard_key_labels": {
       "Off": "All Off",
@@ -63,10 +132,10 @@
       "DirectionRight": "Right",
       "Select": "OK",
       "VolumeUp": "Vol +",
-      "VolumeDown": "Vol −",
+      "VolumeDown": "Vol \u2212",
       "VolumeMute": "Mute",
       "ChannelUp": "Ch +",
-      "ChannelDown": "Ch −",
+      "ChannelDown": "Ch \u2212",
       "PrevChannel": "Previous",
       "Red": "Teletext Red",
       "Green": "Teletext Green",
@@ -76,50 +145,492 @@
       "NumberEnter": "Enter"
     },
     "hard_key_layout": [
-      [0, 0, 1, 1, "Off", "Off"],
-      [0, 2, 1, 1, "Activities", "Activities"],
-      [0, 4, 1, 1, "Help", "Help"],
-      [1, 0, 1, 1, "Sound", "Sound"],
-      [1, 4, 1, 1, "Picture", "Picture"],
-      [2, 1, 1, 1, "Menu", "Menu"],
-      [2, 3, 1, 1, "Info", "Info"],
-      [3, 1, 1, 1, "Exit", "Exit"],
-      [3, 3, 1, 1, "Guide", "Guide"],
-      [4, 2, 1, 1, "DirectionUp", "Up"],
-      [5, 1, 1, 1, "DirectionLeft", "Left"],
-      [5, 2, 1, 1, "Select", "OK"],
-      [5, 3, 1, 1, "DirectionRight", "Right"],
-      [6, 2, 1, 1, "DirectionDown", "Down"],
-      [7, 0, 1, 1, "VolumeUp", "Vol +"],
-      [7, 2, 1, 1, "VolumeMute", "Mute"],
-      [7, 4, 1, 1, "ChannelUp", "Ch +"],
-      [8, 0, 1, 1, "VolumeDown", "Vol −"],
-      [8, 2, 1, 1, "PrevChannel", "Prev"],
-      [8, 4, 1, 1, "ChannelDown", "Ch −"],
-      [9, 0, 1, 1, "Red", "Red"],
-      [9, 1, 1, 1, "Green", "Green"],
-      [9, 3, 1, 1, "Yellow", "Yellow"],
-      [9, 4, 1, 1, "Blue", "Blue"],
-      [10, 0, 1, 1, "Rewind", "Rew"],
-      [10, 2, 1, 1, "Play", "Play"],
-      [10, 4, 1, 1, "FastForward", "FF"],
-      [11, 0, 1, 1, "SkipBack", "Skip -"],
-      [11, 2, 1, 1, "Pause", "Pause"],
-      [11, 4, 1, 1, "SkipForward", "Skip +"],
-      [12, 0, 1, 1, "Record", "Rec"],
-      [12, 4, 1, 1, "Stop", "Stop"],
-      [13, 1, 1, 1, "Number1", "1"],
-      [13, 2, 1, 1, "Number2", "2"],
-      [13, 3, 1, 1, "Number3", "3"],
-      [14, 1, 1, 1, "Number4", "4"],
-      [14, 2, 1, 1, "Number5", "5"],
-      [14, 3, 1, 1, "Number6", "6"],
-      [15, 1, 1, 1, "Number7", "7"],
-      [15, 2, 1, 1, "Number8", "8"],
-      [15, 3, 1, 1, "Number9", "9"],
-      [16, 1, 1, 1, "NumberPlus", "+"],
-      [16, 2, 1, 1, "Number0", "0"],
-      [16, 3, 1, 1, "NumberEnter", "E"]
+      [
+        0,
+        0,
+        1,
+        1,
+        "Off",
+        "Off"
+      ],
+      [
+        0,
+        2,
+        1,
+        1,
+        "Activities",
+        "Activities"
+      ],
+      [
+        0,
+        4,
+        1,
+        1,
+        "Help",
+        "Help"
+      ],
+      [
+        1,
+        0,
+        1,
+        1,
+        "Sound",
+        "Sound"
+      ],
+      [
+        1,
+        4,
+        1,
+        1,
+        "Picture",
+        "Picture"
+      ],
+      [
+        2,
+        1,
+        1,
+        1,
+        "Menu",
+        "Menu"
+      ],
+      [
+        2,
+        3,
+        1,
+        1,
+        "Info",
+        "Info"
+      ],
+      [
+        3,
+        1,
+        1,
+        1,
+        "Exit",
+        "Exit"
+      ],
+      [
+        3,
+        3,
+        1,
+        1,
+        "Guide",
+        "Guide"
+      ],
+      [
+        4,
+        2,
+        1,
+        1,
+        "DirectionUp",
+        "Up"
+      ],
+      [
+        5,
+        1,
+        1,
+        1,
+        "DirectionLeft",
+        "Left"
+      ],
+      [
+        5,
+        2,
+        1,
+        1,
+        "Select",
+        "OK"
+      ],
+      [
+        5,
+        3,
+        1,
+        1,
+        "DirectionRight",
+        "Right"
+      ],
+      [
+        6,
+        2,
+        1,
+        1,
+        "DirectionDown",
+        "Down"
+      ],
+      [
+        7,
+        0,
+        1,
+        1,
+        "VolumeUp",
+        "Vol +"
+      ],
+      [
+        7,
+        2,
+        1,
+        1,
+        "VolumeMute",
+        "Mute"
+      ],
+      [
+        7,
+        4,
+        1,
+        1,
+        "ChannelUp",
+        "Ch +"
+      ],
+      [
+        8,
+        0,
+        1,
+        1,
+        "VolumeDown",
+        "Vol \u2212"
+      ],
+      [
+        8,
+        2,
+        1,
+        1,
+        "PrevChannel",
+        "Prev"
+      ],
+      [
+        8,
+        4,
+        1,
+        1,
+        "ChannelDown",
+        "Ch \u2212"
+      ],
+      [
+        9,
+        0,
+        1,
+        1,
+        "Red",
+        "Red"
+      ],
+      [
+        9,
+        1,
+        1,
+        1,
+        "Green",
+        "Green"
+      ],
+      [
+        9,
+        3,
+        1,
+        1,
+        "Yellow",
+        "Yellow"
+      ],
+      [
+        9,
+        4,
+        1,
+        1,
+        "Blue",
+        "Blue"
+      ],
+      [
+        10,
+        0,
+        1,
+        1,
+        "Rewind",
+        "Rew"
+      ],
+      [
+        10,
+        2,
+        1,
+        1,
+        "Play",
+        "Play"
+      ],
+      [
+        10,
+        4,
+        1,
+        1,
+        "FastForward",
+        "FF"
+      ],
+      [
+        11,
+        0,
+        1,
+        1,
+        "SkipBack",
+        "Skip -"
+      ],
+      [
+        11,
+        2,
+        1,
+        1,
+        "Pause",
+        "Pause"
+      ],
+      [
+        11,
+        4,
+        1,
+        1,
+        "SkipForward",
+        "Skip +"
+      ],
+      [
+        12,
+        0,
+        1,
+        1,
+        "Record",
+        "Rec"
+      ],
+      [
+        12,
+        4,
+        1,
+        1,
+        "Stop",
+        "Stop"
+      ],
+      [
+        13,
+        1,
+        1,
+        1,
+        "Number1",
+        "1"
+      ],
+      [
+        13,
+        2,
+        1,
+        1,
+        "Number2",
+        "2"
+      ],
+      [
+        13,
+        3,
+        1,
+        1,
+        "Number3",
+        "3"
+      ],
+      [
+        14,
+        1,
+        1,
+        1,
+        "Number4",
+        "4"
+      ],
+      [
+        14,
+        2,
+        1,
+        1,
+        "Number5",
+        "5"
+      ],
+      [
+        14,
+        3,
+        1,
+        1,
+        "Number6",
+        "6"
+      ],
+      [
+        15,
+        1,
+        1,
+        1,
+        "Number7",
+        "7"
+      ],
+      [
+        15,
+        2,
+        1,
+        1,
+        "Number8",
+        "8"
+      ],
+      [
+        15,
+        3,
+        1,
+        1,
+        "Number9",
+        "9"
+      ],
+      [
+        16,
+        1,
+        1,
+        1,
+        "NumberPlus",
+        "+"
+      ],
+      [
+        16,
+        2,
+        1,
+        1,
+        "Number0",
+        "0"
+      ],
+      [
+        16,
+        3,
+        1,
+        1,
+        "NumberEnter",
+        "E"
+      ]
+    ],
+    "device_types": {
+      "Amplifier": "Amplifier",
+      "AudioVideoSwitch": "A/V switch",
+      "CableBox": "Cable box",
+      "Cassette": "Cassette deck",
+      "Cd": "CD player",
+      "CdJukebox": "CD jukebox",
+      "CdRadioCassette": "Radio / CD / cassette",
+      "ClimateControl": "Climate control",
+      "Computer": "Computer",
+      "Dat": "DAT deck",
+      "DvdCd": "DVD / CD player",
+      "DvdCdGame": "DVD / games console",
+      "DvdCdRadio": "DVD / CD / radio",
+      "DvdRecorder": "DVD recorder",
+      "DvdVcr": "DVD / VCR combo",
+      "DvdVcrReceiver": "DVD / VCR receiver",
+      "DvdrVcr": "DVD recorder / VCR",
+      "GameConsole": "Games console",
+      "HomeAppliance": "Home appliance",
+      "Laptop": "Laptop",
+      "Laserdisc": "LaserDisc player",
+      "Light": "Lighting",
+      "MediaCenterPC": "Media centre PC",
+      "Minidisc": "MiniDisc deck",
+      "Monitor": "Monitor",
+      "MusicServer": "Music server",
+      "Projector": "Projector",
+      "Pvr": "Recorder (PVR)",
+      "RadioTuner": "Radio tuner",
+      "Receiver": "AV receiver",
+      "Satellite": "Satellite receiver",
+      "SetTopBox": "Set-top box",
+      "Television": "Television",
+      "TvDvd": "TV / DVD combo",
+      "TvDvdVcr": "TV / DVD / VCR combo",
+      "TvHdd": "TV / hard-disc recorder",
+      "TvVcr": "TV / VCR combo",
+      "Vcr": "VCR"
+    },
+    "activity_types": [
+      [
+        "Listen to the CD Jukebox",
+        "VirtualCdJukebox"
+      ],
+      [
+        "Listen to a CD",
+        "VirtualCdMulti"
+      ],
+      [
+        "Watch a DVD",
+        "VirtualDvd"
+      ],
+      [
+        "Play a Game",
+        "VirtualGameConsole"
+      ],
+      [
+        "Custom / Other",
+        "VirtualGeneric"
+      ],
+      [
+        "Watch a Laserdisc",
+        "VirtualLaserdisc"
+      ],
+      [
+        "Listen to Music (Media Center)",
+        "VirtualMediaCenterMusic"
+      ],
+      [
+        "View Pictures",
+        "VirtualMediaCenterPictures"
+      ],
+      [
+        "Watch TV (Media Center)",
+        "VirtualMediaCenterTv"
+      ],
+      [
+        "Watch Video (Media Center)",
+        "VirtualMediaCenterVideos"
+      ],
+      [
+        "Listen to a MiniDisc",
+        "VirtualMinidisc"
+      ],
+      [
+        "Listen to the Music Server",
+        "VirtualMusicServer"
+      ],
+      [
+        "Give a Presentation",
+        "VirtualPresentation"
+      ],
+      [
+        "Watch the PVR",
+        "VirtualPvr"
+      ],
+      [
+        "Listen to the Radio",
+        "VirtualRadioSimple"
+      ],
+      [
+        "Watch ReplayTV",
+        "VirtualReplayTV"
+      ],
+      [
+        "Listen to Satellite Radio",
+        "VirtualSatelliteMusic"
+      ],
+      [
+        "Listen to a Tape",
+        "VirtualTape"
+      ],
+      [
+        "Teletext",
+        "VirtualTeletext"
+      ],
+      [
+        "Watch TV",
+        "VirtualTelevisionN"
+      ],
+      [
+        "Watch TiVo",
+        "VirtualTiVo"
+      ],
+      [
+        "Watch a Video",
+        "VirtualVcr"
+      ],
+      [
+        "Record to Video",
+        "VirtualVcrRecorder"
+      ]
     ]
   }
 }

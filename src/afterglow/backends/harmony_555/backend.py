@@ -17,15 +17,17 @@ def validate_payload(payload: bytes, _profile=None) -> dict:
 
 
 def import_project(source, profile=None, context=None) -> ImportResult:
-    """Read an AHCM binary image into an Afterglow project structure."""
+    """Read an AHCM binary image or unpacked ezhex tree into an Afterglow project structure."""
     carrier = payloads.get(getattr(profile, "payload", "blob")) if profile else None
     if isinstance(source, (str, Path)):
-        payload = Path(source).read_bytes()
+        src_path = Path(source)
+        if src_path.is_dir():
+            active_carrier = carrier or payloads.get("blob")
+            payload = active_carrier.build(str(src_path))
+        else:
+            payload = src_path.read_bytes()
     else:
         payload = bytes(source)
-
-    if carrier:
-        payload = carrier.build(source)
 
     validation = validate_payload(payload)
     project = importing.read_project(payload)
